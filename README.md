@@ -14,7 +14,7 @@ This fork is licensed under the [GPLv3](LICENSE), like upstream. Bundled third-p
 
 LGPT's instruments have so far been sample players (and MIDI out). PIGTAIL adds a new instrument type that generates sound instead of playing back a sample. Its voice is the macro oscillator from [Mutable Instruments Braids](https://pichenettes.github.io/mutable-instruments-documentation/modules/braids/), which gives you 48 oscillator models in one instrument.
 
-Pick the PIGTAIL type in the instrument view and you get these parameters:
+PIGTAIL instruments live in slots `90`–`9F` (instrument types are fixed per slot: `00`–`7F` are samples, `80`–`8F` MIDI). Put one of those numbers in a phrase's instrument column, and its instrument view shows these parameters:
 
 | Parameter | Range | Description |
 | --- | --- | --- |
