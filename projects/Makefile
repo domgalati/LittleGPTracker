@@ -8,6 +8,10 @@ PLATFORM:=  RASPI
 FONT := original.bmp
 include $(PWD)/Makefile.$(PLATFORM)
 
+# Third party code that includes its headers relative to its own root
+# (Mutable Instruments Braids: "braids/..." and "stmlib/...")
+CXXFLAGS += -I$(PWD)/../sources/Externals/Braids
+
 #---------------------------------------------------------------------------------
 # options for FXE
 #---------------------------------------------------------------------------------
@@ -54,7 +58,9 @@ COMMONDIRS := \
 	../sources/Foundation/Variables \
 	../sources/Externals/Compression \
 	../sources/Externals/Soundfont \
-	../sources/Externals/TinyXML
+	../sources/Externals/TinyXML \
+	../sources/Externals/Braids/braids \
+	../sources/Externals/Braids/stmlib/utils
 
 #---------------------------------------------------------------------------------
 # Linux
@@ -272,7 +278,9 @@ COMMONFILES := \
 	SoundFontPreset.o SoundFontManager.o SoundFontSample.o \
 	ENAB.o HYDRA.o OMEGA.o RIFF.o SFDETECT.o SFLOOKUP.o SFNAV.o SFREADER.o WIN_MEM.o \
 	HexBuffers.o lz.o \
-	tinyxmlparser.o tinyxml.o tinyxmlerror.o tinystr.o Tiny2NosStub.o
+	tinyxmlparser.o tinyxml.o tinyxmlerror.o tinystr.o Tiny2NosStub.o \
+	macro_oscillator.o analog_oscillator.o digital_oscillator.o resources.o random.o \
+	host_rate.o
 
 #---------------------------------------------------------------------------------
 # Linux

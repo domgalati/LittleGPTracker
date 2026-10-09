@@ -32,6 +32,7 @@
 #include "stmlib/stmlib.h"
 
 #include "braids/resources.h"
+#include "braids/host_rate.h"
 #include "stmlib/utils/dsp.h"
 
 namespace braids {
@@ -69,6 +70,9 @@ class Svf {
   
   void set_punch(uint16_t punch) {
     punch_ = (static_cast<uint32_t>(punch) * punch) >> 24;
+    // LGPT: punch adds to the cutoff coefficient; scale it so the cutoff
+    // sweep covers the same range in Hz at the host rate
+    punch_ = ScaleRate(punch_);
   }
   
   void set_mode(SvfMode mode) {

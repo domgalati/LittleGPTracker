@@ -37,9 +37,36 @@
 #include "braids/parameter_interpolation.h"
 #include "braids/resources.h"
 
+#include <cmath>
+#include <complex>
+
+#include "braids/host_rate.h"
+
 namespace braids {
   
 using namespace stmlib;
+
+// LGPT: copies of the rate dependent constants, recomputed when the host
+// sample rate changes (see host_rate.h). Defined near the end of this file.
+static void UpdateHostRateTables();
+static int32_t host_resonator_gain_q8 = 256;
+// LGPT: white noise has the same per sample power at any rate, so a filter
+// of fixed bandwidth in Hz passes `ratio` times more of it at a lower rate.
+// Noise feeding filters/resonators is scaled by 1/sqrt(ratio), Q15.
+static int32_t host_noise_gain = 32768;
+// LGPT: plucked string averaging weight (Q15) when the line holds 2^d
+// times fewer points per period than at 96kHz (index d)
+static int32_t host_pluck_average[5] = { 16384, 16384, 16384, 16384, 16384 };
+
+// LGPT: resonator input gain for a (host shifted) pitch. The gain table is
+// clipped, so read it at the 96kHz pitch to keep the same balance between
+// resonators, then correct the level for the host rate (ratio^1.5).
+static inline int32_t HostResonatorScale(int32_t pitch) {
+  int32_t p = pitch - host_rate.pitch_offset;
+  CONSTRAIN(p, 0, 16383)
+  int32_t scale = Interpolate824(lut_resonator_scale, p << 17);
+  return (scale * host_resonator_gain_q8) >> 8;
+}
 
 static const uint16_t kHighestNote = 140 * 128;
 static const uint16_t kPitchTableStart = 128 * 128;
@@ -49,8 +76,10 @@ static const uint32_t kFIR4Coefficients[4] = { 10530, 14751, 16384, 14751 };
 static const uint32_t kFIR4DcOffset = 28208;
 
 uint32_t DigitalOscillator::ComputePhaseIncrement(int16_t midi_pitch) {
-  if (midi_pitch >= kPitchTableStart) {
-    midi_pitch = kPitchTableStart - 1;
+  // LGPT: the host pitch offset moves the top of the range up
+  int32_t highest = kPitchTableStart + host_rate.pitch_offset;
+  if (midi_pitch >= highest) {
+    midi_pitch = highest - 1;
   }
   
   int32_t ref_pitch = midi_pitch;
@@ -61,12 +90,19 @@ uint32_t DigitalOscillator::ComputePhaseIncrement(int16_t midi_pitch) {
     ref_pitch += kOctave;
     ++num_shifts;
   }
+  // LGPT: above the table's octave (only reachable below 96kHz)
+  size_t num_up_shifts = 0;
+  while (ref_pitch >= kOctave) {
+    ref_pitch -= kOctave;
+    ++num_up_shifts;
+  }
   
   uint32_t a = lut_oscillator_increments[ref_pitch >> 4];
   uint32_t b = lut_oscillator_increments[(ref_pitch >> 4) + 1];
   uint32_t phase_increment = a + \
       (static_cast<int32_t>(b - a) * (ref_pitch & 0xf) >> 4);
   phase_increment >>= num_shifts;
+  phase_increment <<= num_up_shifts;
   return phase_increment;
 }
 
@@ -87,6 +123,11 @@ uint32_t DigitalOscillator::ComputeDelay(int16_t midi_pitch) {
   uint32_t a = lut_oscillator_delays[ref_pitch >> 4];
   uint32_t b = lut_oscillator_delays[(ref_pitch >> 4) + 1];
   uint32_t delay = a + (static_cast<int32_t>(b - a) * (ref_pitch & 0xf) >> 4);  
+  // LGPT: upstream bug fix, a negative pitch needs more than 12 shifts and
+  // the shift below went negative. Callers clamp the (maximum) delay.
+  if (num_shifts > 12) {
+    num_shifts = 12;
+  }
   delay >>= 12 - num_shifts;
   return delay;
 }
@@ -95,6 +136,8 @@ void DigitalOscillator::Render(
     const uint8_t* sync,
     int16_t* buffer,
     size_t size) {
+
+  UpdateHostRateTables();  // LGPT
 
   // Quantize parameter for FM.
   if (shape_ >= OSC_SHAPE_FM &&
@@ -253,8 +296,13 @@ void DigitalOscillator::RenderComb(
   
   int16_t* dl = delay_lines_.comb;
   uint32_t delay = ComputeDelay(filtered_pitch);
-  if (delay > (kCombDelayLength << 16)) {
-    delay = kCombDelayLength << 16;
+  // LGPT: cap the delay at the same time upstream allows at 96kHz
+  uint32_t max_delay = ScaleSamples(kCombDelayLength << 16);
+  if (max_delay > (kCombDelayLength << 16)) {
+    max_delay = kCombDelayLength << 16;
+  }
+  if (delay > max_delay) {
+    delay = max_delay;
   }
   uint32_t delay_integral = delay >> 16;
   int32_t delay_fractional = delay & 0xffff;
@@ -294,6 +342,8 @@ void DigitalOscillator::RenderToy(
   
   uint16_t decimation_counter = state_.toy.decimation_counter;
   uint16_t decimation_count = 512 - (parameter_[0] >> 6);
+  // LGPT: the sample and hold period is counted in samples
+  decimation_count = ScaleSamples(decimation_count);
 
   uint8_t held_sample = state_.toy.held_sample;
   while (size--) {
@@ -330,8 +380,8 @@ void DigitalOscillator::RenderDigitalFilter(
     int16_t* buffer,
     size_t size) {
   int16_t shifted_pitch = pitch_ + ((parameter_[0] - 2048) >> 1);
-  if (shifted_pitch > 16383) {
-    shifted_pitch = 16383;
+  if (shifted_pitch > 16383 + host_rate.pitch_offset) {  // LGPT
+    shifted_pitch = 16383 + host_rate.pitch_offset;
   }
   uint32_t modulator_phase = state_.res.modulator_phase;
   uint32_t square_modulator_phase = state_.res.square_modulator_phase;
@@ -412,7 +462,9 @@ void DigitalOscillator::RenderVosim(
     int16_t* buffer,
     size_t size) {
   for (size_t i = 0; i < 2; ++i) {
-    state_.vow.formant_increment[i] = ComputePhaseIncrement(parameter_[i] >> 1);
+    // LGPT: formant pitches are absolute, shift them like the note pitch
+    state_.vow.formant_increment[i] = ComputePhaseIncrement(
+        (parameter_[i] >> 1) + host_rate.pitch_offset);
   }
   while (size--) {
     phase_ += phase_increment_;
@@ -475,12 +527,13 @@ void DigitalOscillator::RenderVowel(
   uint16_t formant_shift = (200 + (parameter_[1] >> 6));
   if (strike_) {
     strike_ = false;
-    state_.vow.consonant_frames = 160;
+    state_.vow.consonant_frames = ScaleSamples(160);  // LGPT: in blocks
     uint16_t index = (Random::GetSample() + 1) & 7;
     for (size_t i = 0; i < 3; ++i) {
-      state_.vow.formant_increment[i] = \
+      // LGPT: absolute formant increments, scaled to the host rate
+      state_.vow.formant_increment[i] = ScaleRate(
           static_cast<uint32_t>(consonant_data[index].formant_frequency[i]) * \
-          0x1000 * formant_shift;
+          0x1000 * formant_shift);
       state_.vow.formant_amplitude[i] = consonant_data[index].formant_amplitude[i];
     }
     state_.vow.noise = index >= 6 ? 4095 : 0;
@@ -490,10 +543,11 @@ void DigitalOscillator::RenderVowel(
     --state_.vow.consonant_frames;
   } else {
     for (size_t i = 0; i < 3; ++i) {
-      state_.vow.formant_increment[i] = 
+      // LGPT: absolute formant increments, scaled to the host rate
+      state_.vow.formant_increment[i] = ScaleRate(
           (vowels_data[vowel_index].formant_frequency[i] * (0x1000 - balance) + \
            vowels_data[vowel_index + 1].formant_frequency[i] * balance) * \
-           formant_shift;
+           formant_shift);
       state_.vow.formant_amplitude[i] =
           (vowels_data[vowel_index].formant_amplitude[i] * (0x1000 - balance) + \
            vowels_data[vowel_index + 1].formant_amplitude[i] * balance) >> 12;
@@ -653,8 +707,9 @@ void DigitalOscillator::RenderVowelFof(
         formant_f_data,
         parameter_[1],
         parameter_[0],
-        i) + (12 << 7);
-    svf_f[i] = Interpolate824(lut_svf_cutoff, frequency << 17);
+        i) + (12 << 7) + host_rate.pitch_offset;  // LGPT: absolute pitch
+    svf_f[i] = Interpolate824(
+        lut_svf_cutoff, static_cast<uint32_t>(frequency) << 17);
     amplitudes[i] = InterpolateFormantParameter(
         formant_a_data,
         parameter_[1],
@@ -673,6 +728,10 @@ void DigitalOscillator::RenderVowelFof(
     init_ = false;
   }
   
+  // LGPT: SVF damping is applied per step; scale it so formant bandwidths
+  // stay the same in Hz (512 == upstream >> 6)
+  int32_t formant_damp = ScaleRate(512);
+
   uint32_t phase = phase_;
   int32_t previous_sample = state_.fof.previous_sample;
   int32_t next_saw_sample = state_.fof.next_saw_sample;
@@ -694,7 +753,7 @@ void DigitalOscillator::RenderVowelFof(
     int32_t in = this_saw_sample;
     int32_t out = 0;
     for (int32_t i = 0; i < 5; ++i) {
-      int32_t notch = in - (svf_bp[i] >> 6);
+      int32_t notch = in - (svf_bp[i] * formant_damp >> 15);  // LGPT
       svf_lp[i] += svf_f[i] * svf_bp[i] >> 15;
       CLIP(svf_lp[i])
       int32_t hp = notch - svf_lp[i];
@@ -753,7 +812,9 @@ void DigitalOscillator::RenderFeedbackFm(
   int16_t previous_sample = state_.ffm.previous_sample;
   uint32_t modulator_phase = state_.ffm.modulator_phase;
 
-  int32_t attenuation = pitch_ - (72 << 7) + ((parameter_[1] - 16384) >> 1);
+  // LGPT: attenuation depends on the played note, not the shifted pitch
+  int32_t attenuation = pitch_ - host_rate.pitch_offset - (72 << 7) + \
+      ((parameter_[1] - 16384) >> 1);
   attenuation = 32767 - attenuation * 4;
   if (attenuation < 0) attenuation = 0;
   if (attenuation > 32767) attenuation = 32767;
@@ -854,6 +915,22 @@ static const uint16_t kDrumPartialDecayShort[] = {
   65083, 64715, 64715, 64715, 64715, 62312
 };
 
+// LGPT: host rate copies of rate dependent constants, filled in by
+// UpdateHostRateTables()
+static uint16_t host_bell_decay_long[kNumBellPartials];
+static uint16_t host_bell_decay_short[kNumBellPartials];
+static uint16_t host_drum_decay_long[kNumDrumPartials];
+static uint16_t host_drum_decay_short[kNumDrumPartials];
+static uint16_t host_particle_decay;
+static int32_t host_resonance_factor;
+static int32_t host_resonance_squared;
+static uint16_t host_dc_blocking_pole;
+static int32_t host_bridge_lp_gain;
+static int32_t host_bridge_lp_pole;
+static int32_t host_biquad_gain;
+static int32_t host_biquad_pole_1;
+static int32_t host_biquad_pole_2;
+
 void DigitalOscillator::RenderStruckBell(
     const uint8_t* sync,
     int16_t* buffer,
@@ -893,8 +970,8 @@ void DigitalOscillator::RenderStruckBell(
   // its maximum value
   if (parameter_[0] < 32000) {
     for (size_t i = 0; i < kNumBellPartials; ++i) {
-      int32_t decay_long = kBellPartialDecayLong[i];
-      int32_t decay_short = kBellPartialDecayShort[i];
+      int32_t decay_long = host_bell_decay_long[i];  // LGPT
+      int32_t decay_short = host_bell_decay_short[i];
       int16_t balance = (32767 - parameter_[0]) >> 8;
       balance = balance * balance >> 7;
       int32_t decay = decay_long - ((decay_long - decay_short) * balance >> 7);
@@ -1003,8 +1080,8 @@ void DigitalOscillator::RenderStruckDrum(
   } else {
     if (parameter_[0] < 32000) {
       for (size_t i = 0; i < kNumDrumPartials; ++i) {
-        int32_t decay_long = kDrumPartialDecayLong[i];
-        int32_t decay_short = kDrumPartialDecayShort[i];
+        int32_t decay_long = host_drum_decay_long[i];  // LGPT
+        int32_t decay_short = host_drum_decay_short[i];
         int16_t balance = (32767 - parameter_[0]) >> 8;
         balance = balance * balance >> 7;
         int32_t decay = decay_long - ((decay_long - decay_short) * balance >> 7);
@@ -1047,6 +1124,7 @@ void DigitalOscillator::RenderStruckDrum(
     if (noise < -16384) {
       noise = -16384;
     }
+    noise = noise * host_noise_gain >> 15;  // LGPT
     lp_state_0 += (noise - lp_state_0) * f >> 15;
     lp_state_1 += (lp_state_0 - lp_state_1) * f >> 15;
     lp_state_2 += (lp_state_1 - lp_state_2) * f >> 15;
@@ -1089,6 +1167,11 @@ void DigitalOscillator::RenderPlucked(
     int16_t* buffer,
     size_t size) {
   phase_increment_ <<= 1;
+  // LGPT: the increment this note would have at 96kHz. The string loss is
+  // chosen from it, and the delay line resolution it would get is compared
+  // to the actual one to keep the per period damping the same (see below).
+  uint32_t native_increment = static_cast<uint32_t>(
+      (static_cast<uint64_t>(phase_increment_) * host_rate.inv_ratio_q16) >> 16);
   if (strike_) {
     ++active_voice_;
     if (active_voice_ >= kNumPluckVoices) {
@@ -1101,6 +1184,13 @@ void DigitalOscillator::RenderPlucked(
     while (increment > (2 << 22)) {
       increment >>= 1;
       ++p->shift;
+    }
+    // LGPT
+    increment = native_increment;
+    p->native_shift = 0;
+    while (increment > (2 << 22)) {
+      increment >>= 1;
+      ++p->native_shift;
     }
     p->size = 1024 >> p->shift;
     p->mask = p->size - 1;
@@ -1125,7 +1215,7 @@ void DigitalOscillator::RenderPlucked(
   uint32_t update_probability = parameter_[0] < 16384
       ? 65535
       : 131072 - (parameter_[0] >> 3) * 31;
-  int16_t loss = 4096 - (phase_increment_ >> 14);
+  int16_t loss = 4096 - (native_increment >> 14);  // LGPT
   if (loss < 256) {
     loss = 256;
   }
@@ -1142,6 +1232,15 @@ void DigitalOscillator::RenderPlucked(
     for (size_t i = 0; i < kNumPluckVoices; ++i) {
       PluckState* p = &state_.plk[i];
       int16_t* dl = delay_lines_.ks + i * 1025;
+      // LGPT: at a lower host rate the line holds 2^d times fewer points per
+      // period, so the (a+b)/2 averaging pass would low pass 4^d times harder
+      // per period. Use a weaker weighted average with the same per period
+      // effect on the low harmonics instead.
+      int32_t average_weight = 16384;
+      if (p->shift > p->native_shift) {
+        average_weight = host_pluck_average[
+            std::min<size_t>(p->shift - p->native_shift, 4)];
+      }
       // Initialization: Just use a white noise sample and fill the delay
       // line.
       if (p->initialization_ptr) {
@@ -1162,8 +1261,13 @@ void DigitalOscillator::RenderPlucked(
           int32_t b = dl[next];
           uint32_t probability = Random::GetWord();
           if ((probability & 0xffff) <= update_probability) {
-            int32_t sum = (a + b);
-            sum = sum < 0 ? -(-sum >> 1) : (sum >> 1);
+            int32_t sum;
+            if (average_weight == 16384) {
+              sum = (a + b);
+              sum = sum < 0 ? -(-sum >> 1) : (sum >> 1);
+            } else {
+              sum = a + ((b - a) * average_weight >> 15);  // LGPT
+            }
             if (loss) {
               sum = sum * (32768 - loss) >> 15;
             }
@@ -1211,12 +1315,15 @@ void DigitalOscillator::RenderBowed(
 
   uint16_t delay_ptr = state_.phy.delay_ptr;
   uint16_t excitation_ptr = state_.phy.excitation_ptr;
+  uint16_t excitation_frac = state_.phy.excitation_frac;  // LGPT
   int32_t lp_state = state_.phy.lp_state;
 
   int32_t biquad_y0 = state_.phy.filter_state[0];
   int32_t biquad_y1 = state_.phy.filter_state[1];
   // Setup delay times and interpolation coefficients.
-  uint32_t delay = (delay_ >> 1) - (2 << 16);  // Compensation for 1-pole delay
+  // Compensation for 1-pole delay. LGPT: the bridge filter keeps its response
+  // in Hz, so keep its delay compensation constant in time, not samples.
+  uint32_t delay = (delay_ >> 1) - ScaleSamples(2 << 16);
   uint32_t bridge_delay = (delay >> 8) * parameter_1;
   // Transpose one octave up when the note is too low to fit in the delays.
   while ((delay - bridge_delay) > ((kWGNeckLength - 1) << 16)
@@ -1247,12 +1354,16 @@ void DigitalOscillator::RenderBowed(
     int32_t bridge_value = Mix(
         bridge_dl_a, bridge_dl_b, bridge_delay_fractional) << 8;
     int32_t nut_value = Mix(nut_dl_a, nut_dl_b, neck_delay_fractional) << 8;
-    lp_state = (bridge_value * kBridgeLPGain + lp_state * kBridgeLPPole1) >> 15;
+    lp_state = (bridge_value * host_bridge_lp_gain + \
+        lp_state * host_bridge_lp_pole) >> 15;  // LGPT
     int32_t bridge_reflection = -lp_state;
     int32_t nut_reflection = -nut_value;
     int32_t string_velocity = bridge_reflection + nut_reflection;
-    int32_t bow_velocity = lut_bowing_envelope[excitation_ptr >> 1];
-    bow_velocity += lut_bowing_envelope[(excitation_ptr + 1) >> 1];
+    // LGPT: clamp, the envelope may advance more than one step per sample
+    uint16_t bow_index = std::min<uint16_t>(
+        excitation_ptr >> 1, LUT_BOWING_ENVELOPE_SIZE - 2);
+    int32_t bow_velocity = lut_bowing_envelope[bow_index];
+    bow_velocity += lut_bowing_envelope[bow_index + (excitation_ptr & 1)];
     bow_velocity >>= 1;
     int32_t velocity_delta = bow_velocity - string_velocity;
     
@@ -1270,9 +1381,9 @@ void DigitalOscillator::RenderBowed(
     dl_b[delay_ptr % kWGBridgeLength] = (nut_reflection + new_velocity) >> 8;
     ++delay_ptr;
     
-    int32_t temp = bridge_value * kBiquadGain >> 15;
-    temp += biquad_y0 * kBiquadPole1 >> 12;
-    temp += biquad_y1 * kBiquadPole2 >> 12;
+    int32_t temp = bridge_value * host_biquad_gain >> 15;  // LGPT
+    temp += biquad_y0 * host_biquad_pole_1 >> 12;
+    temp += biquad_y1 * host_biquad_pole_2 >> 12;
     int32_t out = temp - biquad_y1;
     biquad_y1 = biquad_y0;
     biquad_y0 = temp;
@@ -1281,9 +1392,13 @@ void DigitalOscillator::RenderBowed(
     *buffer++ = (out + previous_sample) >> 1;
     *buffer++ = out;
     previous_sample = out;
-    ++excitation_ptr;
+    // LGPT: advance the bow envelope at its 96kHz speed
+    excitation_frac += host_rate.ratio_q16 >> 8;
+    excitation_ptr += excitation_frac >> 8;
+    excitation_frac &= 0xff;
     size -= 2;
   }
+  state_.phy.excitation_frac = excitation_frac;  // LGPT
   if ((excitation_ptr >> 1) >= LUT_BOWING_ENVELOPE_SIZE - 32) {
     excitation_ptr = (LUT_BOWING_ENVELOPE_SIZE - 32) << 1;
   }
@@ -1332,6 +1447,7 @@ void DigitalOscillator::RenderBlown(
     phase_ += phase_increment_;
     
     int32_t breath_pressure = Random::GetSample() * parameter >> 15;
+    breath_pressure = breath_pressure * host_noise_gain >> 15;  // LGPT
     breath_pressure = breath_pressure * kBreathPressure >> 15;
     breath_pressure += kBreathPressure;
     
@@ -1370,6 +1486,9 @@ void DigitalOscillator::RenderFluted(
     size_t size) {
   uint16_t delay_ptr = state_.phy.delay_ptr;
   uint16_t excitation_ptr = state_.phy.excitation_ptr;
+  uint16_t excitation_frac = state_.phy.excitation_frac;  // LGPT
+  // LGPT: 0.75 envelope steps per 96kHz sample, Q8
+  uint16_t excitation_step = (192 * host_rate.ratio_q16) >> 16;
 
   int32_t lp_state = state_.phy.lp_state;
   int32_t dc_blocking_x0 = state_.phy.filter_state[0];
@@ -1380,6 +1499,7 @@ void DigitalOscillator::RenderFluted(
   
   if (strike_) {
     excitation_ptr = 0;
+    excitation_frac = 0;  // LGPT
     memset(dl_b, 0, sizeof(delay_lines_.fluted.bore));
     memset(dl_j, 0, sizeof(delay_lines_.fluted.jet));
     lp_state = 0;
@@ -1387,7 +1507,8 @@ void DigitalOscillator::RenderFluted(
   }
 
   // Setup delay times and interpolation coefficients.
-  uint32_t bore_delay = (delay_ << 1) - (2 << 16);
+  // LGPT: delay compensation constant in time, not samples
+  uint32_t bore_delay = (delay_ << 1) - ScaleSamples(2 << 16);
   uint32_t jet_delay = (bore_delay >> 8) * (48 + (parameter_[1]  >> 10));
   bore_delay -= jet_delay;
   while (bore_delay > ((kWGFBoreLength - 1) << 16)
@@ -1401,7 +1522,9 @@ void DigitalOscillator::RenderFluted(
   uint16_t jet_delay_fractional = jet_delay & 0xffff;
   
   uint16_t breath_intensity = 2100 - (parameter_[0] >> 4);
-  uint16_t filter_coefficient = lut_flute_body_filter[pitch_ >> 7];
+  // LGPT: the shifted pitch can exceed the table, clamp the index
+  uint16_t filter_coefficient = lut_flute_body_filter[
+      std::min<int32_t>(pitch_ >> 7, LUT_FLUTE_BODY_FILTER_SIZE - 1)];
   while (size--) {
     phase_ += phase_increment_;
     
@@ -1416,16 +1539,18 @@ void DigitalOscillator::RenderFluted(
     int32_t bore_value = Mix(bore_dl_a, bore_dl_b, bore_delay_fractional) << 9;
     int32_t jet_value = Mix(jet_dl_a, jet_dl_b, jet_delay_fractional) << 9;
         
-    int32_t breath_pressure = lut_blowing_envelope[excitation_ptr];
+    int32_t breath_pressure = lut_blowing_envelope[std::min<uint16_t>(
+        excitation_ptr, LUT_BLOWING_ENVELOPE_SIZE - 1)];  // LGPT: clamp
     breath_pressure <<= 1;
     int32_t random_pressure = Random::GetSample() * breath_intensity >> 12;
+    random_pressure = random_pressure * host_noise_gain >> 15;  // LGPT
     random_pressure = random_pressure * breath_pressure >> 15;
     breath_pressure += random_pressure;
     
     lp_state = (-filter_coefficient * bore_value + \
         (4096 - filter_coefficient) * lp_state) >> 12;
     int32_t reflection = lp_state;
-    dc_blocking_y0 = (kDCBlockingPole * dc_blocking_y0 >> 12);
+    dc_blocking_y0 = (host_dc_blocking_pole * dc_blocking_y0 >> 12);  // LGPT
     dc_blocking_y0 += reflection - dc_blocking_x0;
     dc_blocking_x0 = reflection;
     reflection = dc_blocking_y0;
@@ -1449,10 +1574,18 @@ void DigitalOscillator::RenderFluted(
     int32_t out = bore_value >> 1;
     CLIP(out)
     *buffer++ = out;
-    if (size & 3) {
-      ++excitation_ptr;
+    if (host_rate.ratio_q16 == 65536) {
+      if (size & 3) {
+        ++excitation_ptr;
+      }
+    } else {
+      // LGPT: advance the breath envelope at its 96kHz speed
+      excitation_frac += excitation_step;
+      excitation_ptr += excitation_frac >> 8;
+      excitation_frac &= 0xff;
     }
   }
+  state_.phy.excitation_frac = excitation_frac;  // LGPT
   if (excitation_ptr >= LUT_BLOWING_ENVELOPE_SIZE - 32) {
     excitation_ptr = LUT_BLOWING_ENVELOPE_SIZE - 32;
   }
@@ -1634,7 +1767,10 @@ void DigitalOscillator::RenderWaveLine(
   uint16_t scan = smoothed_parameter_;
   const uint8_t* wave_0 = wt_waves + wave_line[previous_parameter_[0] >> 9] * 129;
   const uint8_t* wave_1 = wt_waves + wave_line[scan >> 10] * 129;
-  const uint8_t* wave_2 = wt_waves + wave_line[(scan >> 10) + 1] * 129;
+  // LGPT: upstream bug fix, at maximum timbre this read wave_line[64] (the
+  // table has 64 entries)
+  const uint8_t* wave_2 = wt_waves + wave_line[
+      std::min<uint16_t>((scan >> 10) + 1, sizeof(wave_line) - 1)] * 129;
 
   uint16_t smooth_xfade = scan << 6;
   uint16_t rough_xfade = 0;
@@ -1886,17 +2022,18 @@ void DigitalOscillator::RenderTwinPeaksNoise(
   int32_t y21 = state_.pno.filter_state[1][0];
   int32_t y22 = state_.pno.filter_state[1][1];
   uint32_t q = 65240 + (parameter_[0] >> 7);
+  q = ScaleDecay(q, 65536);  // LGPT: per sample pole radius
   int32_t q_squared = q * q >> 17;
   int16_t p1 = pitch_;
 
   CONSTRAIN(p1, 0, 16383)
   int32_t c1 = Interpolate824(lut_resonator_coefficient, p1 << 17);
-  int32_t s1 = Interpolate824(lut_resonator_scale, p1 << 17);
+  int32_t s1 = HostResonatorScale(p1);  // LGPT
   
   int16_t p2 = pitch_ + ((parameter_[1] - 16384) >> 1);
   CONSTRAIN(p2, 0, 16383)
   int32_t c2 = Interpolate824(lut_resonator_coefficient, p2 << 17);
-  int32_t s2 = Interpolate824(lut_resonator_scale, p2 << 17);
+  int32_t s2 = HostResonatorScale(p2);  // LGPT
 
   c1 = c1 * q >> 16;
   c2 = c2 * q >> 16;
@@ -2023,9 +2160,11 @@ void DigitalOscillator::RenderGranularCloud(
     if (g->envelope_phase > (1 << 24) ||
         g->envelope_phase_increment == 0) {
       g->envelope_phase_increment = 0;
-      if ((Random::GetWord() & 0xffff) < 0x4000) {
-        g->envelope_phase_increment = \
-            lut_granular_envelope_rate[parameter_[0] >> 7] << 3;
+      // LGPT: spawn probability is per block, envelope rate per sample
+      if ((Random::GetWord() & 0xffff) < std::min<uint32_t>(
+              ScaleRate(0x4000), 0x10000)) {
+        g->envelope_phase_increment = ScaleRate(
+            lut_granular_envelope_rate[parameter_[0] >> 7] << 3);
         g->envelope_phase = 0;
         g->phase_increment = phase_increment_;
         int32_t pitch_mod = Random::GetSample() * parameter_[1] >> 16;
@@ -2082,7 +2221,7 @@ void DigitalOscillator::RenderParticleNoise(
     int16_t* buffer,
     size_t size) {
   uint16_t amplitude = state_.pno.amplitude;
-  uint32_t density = 1024 + parameter_[0];
+  uint32_t density = ScaleRate(1024 + parameter_[0]);  // LGPT: per sample
   int32_t sample;
   
   int32_t y10, y20, y30;
@@ -2109,24 +2248,24 @@ void DigitalOscillator::RenderParticleNoise(
 
       CONSTRAIN(p1, 0, 16383)
       c1 = Interpolate824(lut_resonator_coefficient, p1 << 17);
-      s1 = Interpolate824(lut_resonator_scale, p1 << 17);
+      s1 = HostResonatorScale(p1);  // LGPT
 
       int16_t p2 = pitch_ + (noise_a * parameter_[1] >> 15) + 0x980;
       CONSTRAIN(p2, 0, 16383)
       c2 = Interpolate824(lut_resonator_coefficient, p2 << 17);
-      s2 = Interpolate824(lut_resonator_scale, p2 << 17);
+      s2 = HostResonatorScale(p2);  // LGPT
 
       int16_t p3 = pitch_ + (noise_b * parameter_[1] >> 16) + 0x790;
       CONSTRAIN(p3, 0, 16383)
       c3 = Interpolate824(lut_resonator_coefficient, p3 << 17);
-      s3 = Interpolate824(lut_resonator_scale, p3 << 17);
+      s3 = HostResonatorScale(p3);  // LGPT
       
-      c1 = c1 * kResonanceFactor >> 15;
-      c2 = c2 * kResonanceFactor >> 15;
-      c3 = c3 * kResonanceFactor >> 15;
+      c1 = c1 * host_resonance_factor >> 15;  // LGPT
+      c2 = c2 * host_resonance_factor >> 15;
+      c3 = c3 * host_resonance_factor >> 15;
     }
     sample = (static_cast<int16_t>(noise) * amplitude) >> 16;
-    amplitude = (amplitude * kParticleNoiseDecay) >> 16;
+    amplitude = (amplitude * host_particle_decay) >> 16;  // LGPT
     
     if (sample > 0) {
       y10 = sample * s1 >> 16;
@@ -2139,19 +2278,19 @@ void DigitalOscillator::RenderParticleNoise(
     }
     
     y10 += y11 * c1 >> 15;
-    y10 -= y12 * kResonanceSquared >> 15;
+    y10 -= y12 * host_resonance_squared >> 15;  // LGPT
     CLIP(y10);
     y12 = y11;
     y11 = y10;
     
     y20 += y21 * c2 >> 15;
-    y20 -= y22 * kResonanceSquared >> 15;
+    y20 -= y22 * host_resonance_squared >> 15;
     CLIP(y20);
     y22 = y21;
     y21 = y20;
     
     y30 += y31 * c3 >> 15;
-    y30 -= y32 * kResonanceSquared >> 15;
+    y30 -= y32 * host_resonance_squared >> 15;
     CLIP(y30);
     y32 = y31;
     y31 = y30;
@@ -2249,7 +2388,8 @@ void DigitalOscillator::RenderQuestionMark(
   
   uint32_t phase = phase_;
   uint32_t increment = phase_increment_;
-  uint32_t dit_duration = 3600 + ((32767 - parameter_[0]) >> 2);
+  // LGPT: dit length is counted in samples
+  uint32_t dit_duration = ScaleSamples(3600 + ((32767 - parameter_[0]) >> 2));
   int32_t noise_threshold = 1024 + (parameter_[1] >> 3);
   while (size--) {
     phase += increment;
@@ -2305,17 +2445,18 @@ void DigitalOscillator::RenderKick(
     int16_t* buffer,
     size_t size) {
   if (init_) {
+    // LGPT: delays are counted and decays applied per (pair of) samples
     pulse_[0].Init();
     pulse_[0].set_delay(0);
-    pulse_[0].set_decay(3340);
+    pulse_[0].set_decay(ScaleDecay(3340, 4096));
 
     pulse_[1].Init();
-    pulse_[1].set_delay(1.0e-3 * 48000);
-    pulse_[1].set_decay(3072);
+    pulse_[1].set_delay(ScaleSamples(1.0e-3 * 48000));
+    pulse_[1].set_decay(ScaleDecay(3072, 4096));
 
     pulse_[2].Init();
-    pulse_[2].set_delay(4.0e-3 * 48000);
-    pulse_[2].set_decay(4093);
+    pulse_[2].set_delay(ScaleSamples(4.0e-3 * 48000));
+    pulse_[2].set_decay(ScaleDecay(4093, 4096));
 
     svf_[0].Init();
     svf_[0].set_punch(32768);
@@ -2341,6 +2482,8 @@ void DigitalOscillator::RenderKick(
   coefficient = coefficient * coefficient >> 15;
   coefficient = coefficient * coefficient >> 15;
   int32_t lp_coefficient = 128 + (coefficient >> 1) * 3;
+  // LGPT: one pole coefficient applied per (pair of) samples
+  lp_coefficient = 32768 - ScaleDecay(32768 - lp_coefficient, 32768);
   int32_t lp_state = state_.svf.lp;
   
   while (size) {
@@ -2370,17 +2513,18 @@ void DigitalOscillator::RenderSnare(
     int16_t* buffer,
     size_t size) {
   if (init_) {
+    // LGPT: delays are counted and decays applied per (pair of) samples
     pulse_[0].Init();
     pulse_[0].set_delay(0);
-    pulse_[0].set_decay(1536);
+    pulse_[0].set_decay(ScaleDecay(1536, 4096));
 
     pulse_[1].Init();
-    pulse_[1].set_delay(1e-3 * 48000);
-    pulse_[1].set_decay(3072);
+    pulse_[1].set_delay(ScaleSamples(1e-3 * 48000));
+    pulse_[1].set_decay(ScaleDecay(3072, 4096));
 
     pulse_[2].Init();
-    pulse_[2].set_delay(1e-3 * 48000);
-    pulse_[2].set_decay(1200);
+    pulse_[2].set_delay(ScaleSamples(1e-3 * 48000));
+    pulse_[2].set_decay(ScaleDecay(1200, 4096));
   
     pulse_[3].Init();
     pulse_[3].set_delay(0);
@@ -2397,14 +2541,15 @@ void DigitalOscillator::RenderSnare(
   }
   
   if (strike_) {
-    int32_t decay = 49152 - pitch_;
+    // LGPT: ring length is keyed on the played note, not the shifted pitch
+    int32_t decay = 49152 - (pitch_ - host_rate.pitch_offset);
     decay += parameter_[1] < 16384 ? 0 : parameter_[1] - 16384;
     if (decay > 65535) {
       decay = 65535;
     }
     svf_[0].set_resonance(29000 + (decay >> 5));
     svf_[1].set_resonance(26500 + (decay >> 5));
-    pulse_[3].set_decay(4092 + (decay >> 14));
+    pulse_[3].set_decay(ScaleDecay(4092 + (decay >> 14), 4096));  // LGPT
     
     pulse_[0].Trigger(15 * 32768);
     pulse_[1].Trigger(-1 * 32768);
@@ -2435,6 +2580,7 @@ void DigitalOscillator::RenderSnare(
     excitation_2 += !pulse_[2].done() ? 13107 : 0;
     
     int32_t noise_sample = Random::GetSample() * pulse_[3].Process() >> 15;
+    noise_sample = noise_sample * host_noise_gain >> 15;  // LGPT
     
     int32_t sd = 0;
     sd += (svf_[0].Process(excitation_1) + (excitation_1 >> 4)) * g_1 >> 15;
@@ -2465,7 +2611,9 @@ void DigitalOscillator::RenderCymbal(
   HatState* hat = &state_.hat;
 
   uint32_t increments[7];
-  int32_t note = (40 << 7) + (pitch_ >> 1);
+  // LGPT: half the played note plus a fixed base, both absolute
+  int32_t note = (40 << 7) + ((pitch_ - host_rate.pitch_offset) >> 1) + \
+      host_rate.pitch_offset;
   increments[0] = ComputePhaseIncrement(note);
   
   uint32_t root = increments[0] >> 10;
@@ -2477,8 +2625,8 @@ void DigitalOscillator::RenderCymbal(
   increments[6] = increments[0] * 24;
 
   int32_t xfade = parameter_[1];
-  svf_[0].set_frequency(parameter_[0] >> 1);
-  svf_[1].set_frequency(parameter_[0] >> 1);
+  svf_[0].set_frequency((parameter_[0] >> 1) + host_rate.pitch_offset);  // LGPT
+  svf_[1].set_frequency((parameter_[0] >> 1) + host_rate.pitch_offset);
   
   while (size--) {
     phase_ += increments[6];
@@ -2522,6 +2670,73 @@ void DigitalOscillator::RenderYourAlgo(
   }
 }
 */
+
+// LGPT: rate dependent constants for the host sample rate (host_rate.h).
+// At 96kHz these are the upstream constants unchanged.
+
+static int32_t host_tables_rate = 0;
+
+static void UpdateHostRateTables() {
+  if (host_tables_rate == host_rate.rate) {
+    return;
+  }
+  host_tables_rate = host_rate.rate;
+  for (size_t i = 0; i < kNumBellPartials; ++i) {
+    host_bell_decay_long[i] = ScaleDecay(kBellPartialDecayLong[i], 65536);
+    host_bell_decay_short[i] = ScaleDecay(kBellPartialDecayShort[i], 65536);
+  }
+  for (size_t i = 0; i < kNumDrumPartials; ++i) {
+    host_drum_decay_long[i] = ScaleDecay(kDrumPartialDecayLong[i], 65536);
+    host_drum_decay_short[i] = ScaleDecay(kDrumPartialDecayShort[i], 65536);
+  }
+  host_particle_decay = ScaleDecay(kParticleNoiseDecay, 65536);
+  host_resonance_factor = ScaleDecay(kResonanceFactor, 32768);
+  host_resonance_squared = ScaleDecay(kResonanceSquared, 32768);
+  host_dc_blocking_pole = ScaleDecay(kDCBlockingPole, 4096);
+  host_resonator_gain_q8 = host_rate.rate == 96000 ? 256 :
+      int32_t(floor(pow(host_rate.ratio, 1.5) * 256.0 + 0.5));
+  host_noise_gain = host_rate.rate == 96000 ? 32768 :
+      int32_t(floor(32768.0 / sqrt(host_rate.ratio) + 0.5));
+  // Weighted average y = (1-c)a + cb low passes each pass by
+  // 1 - 2c(1-c)(1 - cos w). Matching (a+b)/2 at 2^d times the resolution
+  // for low harmonics gives c(1-c) = 1/(4 * 4^d).
+  for (size_t d = 1; d < 5; ++d) {
+    double cc = (1.0 - sqrt(1.0 - 1.0 / pow(4.0, double(d)))) / 2.0;
+    host_pluck_average[d] = int32_t(floor(cc * 32768.0 + 0.5));
+  }
+
+  // Bowed: one pole bridge low pass and two pole body resonator, both run at
+  // half the sample rate. Map their poles to the host rate and keep the
+  // gain at DC (low pass) and at resonance (body) unchanged.
+  host_bridge_lp_pole = ScaleDecay(kBridgeLPPole1, 32768);
+  host_bridge_lp_gain = int32_t(floor(double(kBridgeLPGain) *
+      (32768 - host_bridge_lp_pole) / (32768 - kBridgeLPPole1) + 0.5));
+
+  if (host_rate.rate == 96000) {
+    host_biquad_gain = kBiquadGain;
+    host_biquad_pole_1 = kBiquadPole1;
+    host_biquad_pole_2 = kBiquadPole2;
+  } else {
+    double a1 = kBiquadPole1 / 4096.0;
+    double a2 = kBiquadPole2 / 4096.0;
+    double r = sqrt(-a2);
+    double theta = acos(a1 / (2.0 * r));
+    double r_host = pow(r, host_rate.ratio);
+    double theta_host = std::min(theta * host_rate.ratio, 3.0);
+    double a1_host = 2.0 * r_host * cos(theta_host);
+    double a2_host = -r_host * r_host;
+    // Band pass numerator (1 - z^-2): peak gain |1-z^-2| / |denominator|
+    std::complex<double> z1 = std::polar(1.0, -theta);
+    std::complex<double> z1_host = std::polar(1.0, -theta_host);
+    double peak = std::abs(1.0 - z1 * z1) /
+        std::abs(1.0 - a1 * z1 - a2 * z1 * z1);
+    double peak_host = std::abs(1.0 - z1_host * z1_host) /
+        std::abs(1.0 - a1_host * z1_host - a2_host * z1_host * z1_host);
+    host_biquad_gain = int32_t(floor(kBiquadGain * peak / peak_host + 0.5));
+    host_biquad_pole_1 = int32_t(floor(a1_host * 4096.0 + 0.5));
+    host_biquad_pole_2 = int32_t(floor(a2_host * 4096.0 + 0.5));
+  }
+}
 
 /* static */
 DigitalOscillator::RenderFn DigitalOscillator::fn_table_[] = {

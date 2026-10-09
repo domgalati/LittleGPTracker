@@ -279,10 +279,25 @@ void InstrumentView::fillPigtailParameters() {
 	I_Instrument *instr=bank->GetInstrument(i) ;
 	GUIPoint position=GetAnchor() ;
 
-	Variable *v=instr->FindVariable(PTIP_VOLUME) ;
-	UIIntVarField *f1=new UIIntVarField(position,*v,"volume: %d [%2.2X]",0,255,1,10) ;
+	Variable *v=instr->FindVariable(PTIP_SHAPE) ;
+	UIIntVarField *f1=new UIIntVarField(position,*v,"shape: %s",0,v->GetListSize()-1,1,1) ;
 	T_SimpleList<UIField>::Insert(f1) ;
 	f1->SetFocus() ;
+
+	position._y+=1 ;
+	v=instr->FindVariable(PTIP_TIMBRE) ;
+	f1=new UIIntVarField(position,*v,"timbre: %2.2X",0,0xFF,1,0x10) ;
+	T_SimpleList<UIField>::Insert(f1) ;
+
+	position._y+=1 ;
+	v=instr->FindVariable(PTIP_COLOR) ;
+	f1=new UIIntVarField(position,*v,"color: %2.2X",0,0xFF,1,0x10) ;
+	T_SimpleList<UIField>::Insert(f1) ;
+
+	position._y+=2 ;
+	v=instr->FindVariable(PTIP_VOLUME) ;
+	f1=new UIIntVarField(position,*v,"volume: %d [%2.2X]",0,255,1,10) ;
+	T_SimpleList<UIField>::Insert(f1) ;
 } ;
 
 void InstrumentView::warpToNext(int offset) {

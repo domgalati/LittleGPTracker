@@ -31,6 +31,7 @@
 #include "stmlib/utils/dsp.h"
 
 #include "braids/resources.h"
+#include "braids/host_rate.h"
 #include "braids/parameter_interpolation.h"
 
 namespace braids {
@@ -44,8 +45,10 @@ static const uint16_t kPitchTableStart = 128 * 128;
 static const uint16_t kOctave = 12 * 128;
 
 uint32_t AnalogOscillator::ComputePhaseIncrement(int16_t midi_pitch) {
-  if (midi_pitch >= kHighestNote) {
-    midi_pitch = kHighestNote - 1;
+  // LGPT: the host pitch offset moves the top of the range up
+  int32_t highest = kHighestNote + host_rate.pitch_offset;
+  if (midi_pitch >= highest) {
+    midi_pitch = highest - 1;
   }
   
   int32_t ref_pitch = midi_pitch;
@@ -56,12 +59,19 @@ uint32_t AnalogOscillator::ComputePhaseIncrement(int16_t midi_pitch) {
     ref_pitch += kOctave;
     ++num_shifts;
   }
+  // LGPT: above the table's octave (only reachable below 96kHz)
+  size_t num_up_shifts = 0;
+  while (ref_pitch >= kOctave) {
+    ref_pitch -= kOctave;
+    ++num_up_shifts;
+  }
   
   uint32_t a = lut_oscillator_increments[ref_pitch >> 4];
   uint32_t b = lut_oscillator_increments[(ref_pitch >> 4) + 1];
   uint32_t phase_increment = a + \
       (static_cast<int32_t>(b - a) * (ref_pitch & 0xf) >> 4);
   phase_increment >>= num_shifts;
+  phase_increment <<= num_up_shifts;
   return phase_increment;
 }
 

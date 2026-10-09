@@ -142,6 +142,7 @@ struct PluckState {
   size_t size;
   size_t write_ptr;
   size_t shift;
+  size_t native_shift;  // LGPT: shift this note would use at 96kHz
   size_t mask;
   size_t pluck_position;
   size_t initialization_ptr;
@@ -167,6 +168,7 @@ struct ParticleNoiseState {
 struct PhysicalModellingState {
   uint16_t delay_ptr;
   uint16_t excitation_ptr;
+  uint16_t excitation_frac;  // LGPT: fractional envelope step (host_rate.h)
   int32_t lp_state;
   int32_t filter_state[2];
   int16_t previous_sample;

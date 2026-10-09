@@ -5,11 +5,14 @@
 #include "Application/Model/Song.h"
 
 #define PTIP_VOLUME MAKE_FOURCC('V','O','L','M')
+#define PTIP_SHAPE  MAKE_FOURCC('S','H','A','P')
+#define PTIP_TIMBRE MAKE_FOURCC('T','M','B','R')
+#define PTIP_COLOR  MAKE_FOURCC('C','O','L','R')
 
-// Sine lookup: 2^PIGTAIL_SINE_BITS entries indexed by the top bits of a
-// 32 bit phase accumulator
-#define PIGTAIL_SINE_BITS 10
-#define PIGTAIL_SINE_SIZE (1<<PIGTAIL_SINE_BITS)
+// Synth voice driven by the Mutable Instruments Braids macro oscillator
+// (sources/Externals/Braids). Braids renders fixed blocks of mono int16 at
+// its own rate; each song channel keeps a small FIFO of rendered samples so
+// LGPT's variable sized Render calls are served from a continuous stream.
 
 class PigtailInstrument:public I_Instrument {
 
@@ -46,18 +49,11 @@ public:
 	virtual void SetTableState(TableSaveState &state) ;
 
 private:
-	static void initSineTable() ;
-
 	Variable *volume_ ;
+	Variable *shape_ ;
+	Variable *timbre_ ;
+	Variable *color_ ;
 	TableSaveState tableState_ ;
-
-	// Per channel voice state (one instrument can play on several channels)
-	unsigned int phase_[SONG_CHANNEL_COUNT] ;
-	unsigned int phaseInc_[SONG_CHANNEL_COUNT] ;
-
-	// +1 guard entry so interpolation never wraps the index
-	static short sineTable_[PIGTAIL_SINE_SIZE+1] ;
-	static bool sineTableReady_ ;
 } ;
 
 #endif
