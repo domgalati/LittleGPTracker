@@ -1,6 +1,7 @@
 # CLAUDE.md
 
-"Synthesis" fork (see `README.md`) of djdiskmachine/LittleGPTracker. Remotes: `origin` = domgalati/LittleGPTracker, `upstream` = djdiskmachine. Adds PIGTAIL, a synth instrument driven by Mutable Instruments Braids. Upstream docs: `docs/`. Everything below was checked on Linux X64 by reading the code or running it; items measured with tooling that no longer exists say so, and code-reading-only claims are labelled.
+This fork of djdiskmachine/LittleGPTracker. Remotes: `origin` = domgalati/LittleGPTracker, `upstream` = djdiskmachine. Adds PIGTAIL, a synth instrument driven by Mutable Instruments Braids. Upstream docs: `docs/`. Everything below was checked on Linux X64 by reading the code or running it; items measured with tooling that no longer exists say so, and code-reading-only claims are labelled.
+- Naming: PIGTAIL is the name of the Braids-based instrument only. The fork has no project name yet; "Synthesis" (commit e9c37d9) was a placeholder. Don't present any name as the project's. TODO: the user picks a name.
 
 ## Build and run (X64, Linux)
 - `cd projects && make PLATFORM=X64`. It must run from `projects/` (the Makefile includes `$(PWD)/Makefile.$(PLATFORM)`). A clean serial build takes about 40 s here. Objects go to `projects/buildX64/`, the binary to `projects/lgpt.x64` (both gitignored). Clean with `make PLATFORM=X64 clean`.
@@ -57,14 +58,15 @@
 - UBSan reports signed-integer overflow in upstream Braids' fixed-point code: `stmlib/utils/dsp.h:110`, `svf.h` `Process()`, and several lines in `digital_oscillator.cpp`. GCC wraps these in practice. A `-Wall` build shows no warnings from Braids.
 - The unknown-TYPE use-after-free in `InstrumentBank::RestoreContent` is fixed (2035c45): an unknown type logs an error and the slot keeps its default.
 - Hardcoded rates: `PlayerChannel.cpp:132` and `:152` compute the channel HPF/LPF coefficients with 44100, so those filters are wrong at other driver rates. `Filters.cpp:54` uses `1/22050`; `Audio.h:16` defaults `GetSampleRate()` to 44100.
-- From reading the code: older builds skip PIGTAIL instruments when loading, but a phrase using instrument 0x90 or higher makes them read past the end of their bank.
+- Older builds read past the end of their instrument bank when a phrase uses instrument 0x90 or higher. Reproduced under ASan at 2035c45 (the commit before PIGTAIL): the phrase byte survives save/load unclamped (`Song.cpp` `restoreHexBuffer`), and `InstrumentBank::GetInstrument(0x90)` overflows the 0x90-entry `instrument_[]` (heap-buffer-overflow at `InstrumentBank.cpp:59`). Old builds skip the `INSTRUMENT` entries themselves (`id < MAX_INSTRUMENT_COUNT`). From reading the code, the callers at `Player.cpp:836` and `PhraseView.cpp:1346` then call into that garbage pointer.
 
 ## Test tooling
 - `pt_lab` was a throwaway test program linked against `projects/buildX64/*.o` (excluding `LINUXMain.o`). Its modes:
   - `audit5`: spectra and decay, native 96 kHz vs PIGTAIL at 44.1 kHz, over 5 seeds; about 7 s.
   - `tune`: pitch sweep with YIN over 36 pitched models, C1–C7, 44.1 and 48 kHz, 9 timbre/color pairs, against a 96 kHz reference; about 2 min 20 s.
   - `init`, `cpu`, and `stress` (built with `-fsanitize=address,undefined`; not timed). A separate checker compared output checksums with pristine upstream to confirm bit-identity at 96 kHz.
-- It was never committed and no longer exists on this machine (it lived in a deleted session scratchpad). Recreate it under `tools/pt_lab/` and document it here. There is no `PT_AUDIT.md` or `ROADMAP.md`.
+- It was never committed and no longer exists on this machine (it lived in a deleted session scratchpad). Recreate it under `tools/pt_lab/` and document it here.
+- `PT_AUDIT.md`: the audit record (provenance, measured results, open items) and the notes from checking it against the code. `ROADMAP.md`: doesn't exist yet (checked 2026-10-09).
 
 ## Workflow rules
 - Survey the code before editing. Make one change at a time. Commit at each working stage.
@@ -73,5 +75,5 @@
 
 ## Not yet verified
 - Any handheld hardware or non-X64 platform; an optimised (`-O3`) build; the MSVC and Xcode project files.
-- By ear, the user has only confirmed the sine version of PIGTAIL; nobody has reported listening to the Braids models.
+- By ear, the user has confirmed PIGTAIL on CSAW: it plays, is in tune, responds to timbre, color and volume (including sweeps during playback), and saves and loads. The other 47 shapes haven't been listened to.
 - Driver rates other than 44.1 kHz in the real app (48 kHz was only tested in `pt_lab`); PIGTAIL CPU on handhelds.

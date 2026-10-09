@@ -1,4 +1,6 @@
-# Little Piggy Tracker: Synthesis fork
+# Little Piggy Tracker: fork with a Braids-based synth instrument
+
+<!-- TODO: this fork has no project name yet ("Synthesis" was a placeholder). PIGTAIL is the instrument's name, not the fork's. -->
 
 This is a fork of [djdiskmachine/LittleGPTracker](https://github.com/djdiskmachine/LittleGPTracker) (Little Piggy Tracker, f.k.a. LittleGPTracker), which in turn builds on the original work of [Marc Nostromo (m-.-n)](https://github.com/Mdashdotdashn/LittleGPTracker).
 
