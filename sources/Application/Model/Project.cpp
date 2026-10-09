@@ -383,12 +383,12 @@ void Project::LoadFirstGen(const char *root) {
 		file->Read(song_->phrase_->instr_,sizeof(char),PHRASE_COUNT*16) ;
 
 		// read instrument data
-		int buffer[MAX_INSTRUMENT_COUNT*3] ; // Three parameters per instruments
-		int byteRead=file->Read(buffer,sizeof(int),MAX_INSTRUMENT_COUNT*3) ;
+		int buffer[LEGACY_INSTRUMENT_COUNT*3] ; // Three parameters per instruments
+		int byteRead=file->Read(buffer,sizeof(int),LEGACY_INSTRUMENT_COUNT*3) ;
 		if (byteRead>0) {
 			int *current=buffer ;
 			InstrumentBank *bank=this->instrumentBank_ ;
-			for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {
+			for (int i=0;i<LEGACY_INSTRUMENT_COUNT;i++) {
 				I_Instrument *instr=bank->GetInstrument(i) ;
 				int count=0 ;
 				IteratorPtr<Variable> it(instr->GetIterator()) ;

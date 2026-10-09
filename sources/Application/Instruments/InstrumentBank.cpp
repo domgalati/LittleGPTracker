@@ -3,6 +3,7 @@
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
 #include "Application/Instruments/MidiInstrument.h"
+#include "Application/Instruments/PigtailInstrument.h"
 #include "System/io/Status.h"
 #include "System/Console/Trace.h"
 #include "Application/Utils/char.h"
@@ -12,7 +13,8 @@
 
 char *InstrumentTypeData[IT_LAST]= {
 	"Sample",
-	"Midi"
+	"Midi",
+	"Pigtail"
 } ;
 
 
@@ -28,6 +30,9 @@ InstrumentBank::InstrumentBank():Persistent("INSTRUMENTBANK") {
         MidiInstrument *s=new MidiInstrument() ;
         s->SetChannel(i) ;
         instrument_[MAX_SAMPLEINSTRUMENT_COUNT+i]=s ;
+    }
+	for (int i=0;i<MAX_PIGTAILINSTRUMENT_COUNT;i++) {
+        instrument_[PIGTAIL_INSTRUMENT_BASE+i]=new PigtailInstrument() ;
     }
     Status::Set("All instrument loaded") ;
 } ;
@@ -133,6 +138,9 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
 						case IT_MIDI:
 							created=new MidiInstrument() ;
 							break ;
+						case IT_PIGTAIL:
+							created=new PigtailInstrument() ;
+							break ;
 						default:
 							// Unknown type (e.g. saved by a newer build): leave
 							// the slot's default instrument in place, skip params
@@ -231,10 +239,16 @@ unsigned short InstrumentBank::Clone(unsigned short i) {
 
 	delete dst ;
   
-	if (src->GetType()==IT_SAMPLE) {
-		dst=new SampleInstrument() ;
-	} else {
-		dst=new MidiInstrument() ;
+	switch (src->GetType()) {
+		case IT_SAMPLE:
+			dst=new SampleInstrument() ;
+			break ;
+		case IT_PIGTAIL:
+			dst=new PigtailInstrument() ;
+			break ;
+		default:
+			dst=new MidiInstrument() ;
+			break ;
 	}
 	instrument_[next]=dst ;
 	IteratorPtr<Variable> it(src->GetIterator()) ;

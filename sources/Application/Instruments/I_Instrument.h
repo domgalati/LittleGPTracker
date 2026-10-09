@@ -10,6 +10,7 @@
 enum InstrumentType {
 	IT_SAMPLE=0,
 	IT_MIDI,
+	IT_PIGTAIL,
 	IT_LAST
 } ;
 
