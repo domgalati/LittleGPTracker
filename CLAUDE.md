@@ -14,7 +14,7 @@
 ## Compiler constraints
 - `projects/Makefile.X64`: `CXXFLAGS := $(CFLAGS) -std=gnu++03` (with `-Wall`). That rules out `nullptr`, `auto`, lambdas, range-for, `constexpr`, `override` and `<cstdint>`. The ported Braids code compiles warning-free under it.
 - `Makefile.X64` sets `OPT_FLAGS := -O3` and then overrides it with `-g`, so default builds are unoptimised and CPU numbers from them aren't representative.
-- Braids has no `-fwrapv` or any other per-object flag. The only Braids flag is `CXXFLAGS += -I$(PWD)/../sources/Externals/Braids` in `projects/Makefile`.
+- Braids objects (the `BRAIDSFILES` list in `projects/Makefile`) get `-fwrapv` through a target-specific variable, `$(BRAIDSFILES): CXXFLAGS += -fwrapv`, because Braids' fixed-point code relies on signed overflow wrapping. Global flags are unchanged: in a build log only those 6 compile lines carry `-fwrapv`. Braids also needs `CXXFLAGS += -I$(PWD)/../sources/Externals/Braids`. A new Braids `.cpp` must go in `BRAIDSFILES`.
 
 ## Adding or changing an instrument type (PIGTAIL commits cb802a4, 1674229)
 1. Enum: add `IT_*` before `IT_LAST` in `sources/Application/Instruments/I_Instrument.h`.

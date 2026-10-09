@@ -12,6 +12,14 @@ include $(PWD)/Makefile.$(PLATFORM)
 # (Mutable Instruments Braids: "braids/..." and "stmlib/...")
 CXXFLAGS += -I$(PWD)/../sources/Externals/Braids
 
+# Braids objects. Braids' fixed-point code relies on signed integer overflow
+# wrapping; -fwrapv makes that defined behaviour for these objects only (a
+# target-specific variable, so other objects and the global flags are unchanged)
+BRAIDSFILES := \
+	macro_oscillator.o analog_oscillator.o digital_oscillator.o resources.o random.o \
+	host_rate.o
+$(BRAIDSFILES): CXXFLAGS += -fwrapv
+
 #---------------------------------------------------------------------------------
 # options for FXE
 #---------------------------------------------------------------------------------
@@ -279,8 +287,7 @@ COMMONFILES := \
 	ENAB.o HYDRA.o OMEGA.o RIFF.o SFDETECT.o SFLOOKUP.o SFNAV.o SFREADER.o WIN_MEM.o \
 	HexBuffers.o lz.o \
 	tinyxmlparser.o tinyxml.o tinyxmlerror.o tinystr.o Tiny2NosStub.o \
-	macro_oscillator.o analog_oscillator.o digital_oscillator.o resources.o random.o \
-	host_rate.o
+	$(BRAIDSFILES)
 
 #---------------------------------------------------------------------------------
 # Linux
