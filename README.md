@@ -1,62 +1,82 @@
-# Little Piggy Tracker
+# Little Piggy Tracker: PIGTAIL fork
 
-![Piggy](https://avatars.githubusercontent.com/u/180156201?s=400&u=ebb53bdea61a025edce0c3782ac75b532dd65dd7&v=4)
+This is a fork of [djdiskmachine/LittleGPTracker](https://github.com/djdiskmachine/LittleGPTracker) (Little Piggy Tracker, f.k.a. LittleGPTracker), which in turn builds on the original work of [Marc Nostromo (m-.-n)](https://github.com/Mdashdotdashn/LittleGPTracker).
 
-**Little Piggy Tracker** (f.k.a _'LittleGPTracker'_) is a music tracker optimised to run on portable game consoles. It is currently running on Windows, MacOS (intel/arm) & Linux, PSP, Miyoo Mini, and a collection of other retro gaming handhelds.
+**For everything general (what the tracker is, supported platforms, releases, build instructions, configuration, usage docs) see the [original README](https://github.com/djdiskmachine/LittleGPTracker#readme).** This README only covers what this fork adds. The upstream documentation in [docs](docs) still applies.
 
-It implements the user interface of [littlesounddj](https://www.littlesounddj.com/lsd/index.php) and precedes [M8 tracker](https://www.dirtywave.com), two popular trackers greatly loved in the tracker community.
+This fork is licensed under the [GPLv3](LICENSE), like upstream. Bundled third-party code is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 
-All versions are available for free under the [GPLv3 License](LICENSE). If you like the project and want to contribute, don't hesitate to make a pull request for this repo.
+> This is a work-in-progress development fork. Expect rough edges, and back up your projects before opening them in this build.
 
-## About This Fork
+## What's added
 
-This build is derivative of the work of the original author `m-.-n`
-aka [Marc Nostromo](https://github.com/Mdashdotdashn/LittleGPTracker).
-The original work and releasing the source code has laid the foundation for everything in this repo.
+### PIGTAIL: a synth instrument
 
-All implemented features have been tested not to break old
-projects but make sure to backup your old cherished work
-just to be safe &#9829;
+LGPT's instruments have so far been sample players (and MIDI out). PIGTAIL adds a new instrument type that generates sound instead of playing back a sample. Its voice is the macro oscillator from [Mutable Instruments Braids](https://pichenettes.github.io/mutable-instruments-documentation/modules/braids/), which gives you 48 oscillator models in one instrument.
 
-## Releases
+Pick the PIGTAIL type in the instrument view and you get these parameters:
 
-### Current Builds
+| Parameter | Range | Description |
+| --- | --- | --- |
+| `shape` | list | Which Braids oscillator model to play |
+| `timbre` | `00`-`FF` | First model-specific parameter (its meaning changes with the shape) |
+| `color` | `00`-`FF` | Second model-specific parameter (its meaning changes with the shape) |
+| `volume` | `00`-`FF` | Output level (default `40`, as Braids models run hot) |
 
-Latest releases from this fork here:
+Available shapes, in order:
 
-- [Releases](https://github.com/djdiskmachine/LittleGPTracker/releases)
+- **Analog-style:** `csaw`, `morph`, `saw/sq`, `fold`, `buzz`
+- **Sub / sync / stacked:** `sub sq`, `sub saw`, `sync sq`, `sync saw`, `saw x3`, `sq x3`, `tri x3`, `sine x3`, `ring`, `swarm`, `saw comb`, `toy`
+- **Filtered (z-filter):** `zlpf`, `zpkf`, `zbpf`, `zhpf`
+- **Vocal / harmonic:** `vosim`, `vowel`, `vow fof`, `harmonic`
+- **FM:** `fm`, `fb fm`, `wt fm`
+- **Physical models:** `pluck`, `bowed`, `blown`, `fluted`
+- **Percussion:** `bell`, `drum`, `kick`, `cymbal`, `snare`
+- **Wavetables:** `wtbl`, `wmap`, `wline`, `wt x4`
+- **Noise / digital:** `noise`, `twin q`, `clk noise`, `cloud`, `particle`, `qpsk`, `qmark`
 
+Notes on the current implementation:
 
-## Documentation
+- It is monophonic per song channel, like other LGPT instruments.
+- Braids is natively a 96 kHz design. Here it runs at the audio driver's sample rate, with its rate-dependent constants adjusted (see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for details).
+- Shape names are what gets saved in a project, so they are kept stable across versions.
+- There is no envelope or release stage yet. A note plays until the channel stops or another note triggers.
+- Table automation is not wired up for PIGTAIL yet.
 
-All the relevant documentation can be found in [Docs](docs) directory.
+The code lives in [PigtailInstrument.cpp](sources/Application/Instruments/PigtailInstrument.cpp), with the vendored Braids sources under [sources/Externals/Braids](sources/Externals/Braids).
 
-Recommended reading to get you started:
+## Roadmap
 
-- [What is Little Piggy Tracker](docs/wiki/What-is-LittlePiggyTracker.md)
-- [Quick-Start Guide](docs/wiki/quick_start_guide.md)
-- [Little Piggy Tracker Configuration](docs/LittlePiggyTrackerConf.md)
-- [Tips and Tricks](docs/wiki/tips_and_tricks.md)
+These are plans, not features that exist today.
 
-## Features per platform
+### More synth instruments
 
-| Platform    | MIDI_Possible | MIDI_enabled | Soundfonts | Note                                 |
-|-------------|---------------|--------------|------------|--------------------------------------|
-| PSP         | NO            | NO           | YES        | [See notes](projects/resources/PSP/INSTALL_HOW_TO.txt) |
-| DEB         | YES           | YES          | YES        |                                      |
-| X64         | YES           | YES          | MAYBE      |                                      |
-| X86         | YES           | YES          | YES        |                                      |
-| STEAM       | YES           | YES          | MAYBE      |                                      |
-| MIYOO       | NO            | NO           | YES        | Port by [Nine-H](https://ninethehacker.xyz) |
-| W32         | YES           | YES          | YES        | Built in VS2008 with love            |
-| RASPI       | YES           | YES          | YES        | Versatile platform                   |
-| CHIP        | YES           | YES          | YES        | [See notes](projects/resources/CHIP/INSTALL_HOW_TO.txt) |
-| BITTBOY     | MAYBE         | NO           | YES        |                                      |
-| GARLIC      | NO         | NO           |NO        | No longer maintained, use Portmaster|
-| GARLICPLUS  | MAYBE         | NO           | YES        | Port by [Simotek](http://simotek.net)|
-| RG35XXPLUS  | MAYBE         | NO           | YES        | Port by [Simotek](http://simotek.net)|
-| MACOS       | YES           | YES          | MAYBE      | Port by [clsource](https://genserver.social/clsource) |
+PIGTAIL is the first of several planned synth instrument types. Next up:
 
-* **MIDI functionality __greatly__ depends on kernel support, please feature request your favourite OS maintainer =)**
-* **Install ffmpeg by following install instructions for your platform [here](https://www.ffmpeg.org/download.html)**
-* **PrintFX requires full ffmpeg. If marked as TBA, it requires a redesign using [libav](https://trac.ffmpeg.org/wiki/Using%20libav*)**
+- **FM synth**
+- More to follow
+
+### Synth parameter control from the phrase editor
+
+Right now PIGTAIL parameters are set per instrument in the instrument view and can't change during playback. The plan is to expose them as phrase commands, in the same way sample instruments already respond to commands, so `shape`, `timbre`, `color` and `volume` can be changed per step. The hook for this (`PigtailInstrument::ProcessCommand`) exists but is currently a stub. The same mechanism should carry over to the upcoming synth instruments.
+
+## Building
+
+Build as for upstream; see the [projects README](projects/README.md) for per-platform instructions. For example, on Linux:
+
+```bash
+cd projects
+make PLATFORM=DEB
+```
+
+(Platform names and prerequisites are listed in that README.) Only tagged upstream releases are considered stable; this fork tracks `master` and is experimental.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md). Upstream changes can be pulled in from the `upstream` remote (`https://github.com/djdiskmachine/LittleGPTracker.git`).
+
+## Credits
+
+- [Marc Nostromo](https://github.com/Mdashdotdashn/LittleGPTracker), original author of LittleGPTracker
+- [djdiskmachine](https://github.com/djdiskmachine/LittleGPTracker) and contributors, maintainers of Little Piggy Tracker
+- [Émilie Gillet / Mutable Instruments](https://github.com/pichenettes/eurorack), author of Braids and stmlib (MIT licensed)
