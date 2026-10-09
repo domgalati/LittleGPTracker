@@ -8,6 +8,10 @@ PLATFORM:=  RASPI
 FONT := original.bmp
 include $(PWD)/Makefile.$(PLATFORM)
 
+# Third party code that includes its headers relative to its own root
+# (Mutable Instruments Braids: "braids/..." and "stmlib/...")
+CXXFLAGS += -I$(PWD)/../sources/Externals/Braids
+
 #---------------------------------------------------------------------------------
 # options for FXE
 #---------------------------------------------------------------------------------
@@ -54,7 +58,9 @@ COMMONDIRS := \
 	../sources/Foundation/Variables \
 	../sources/Externals/Compression \
 	../sources/Externals/Soundfont \
-	../sources/Externals/TinyXML
+	../sources/Externals/TinyXML \
+	../sources/Externals/Braids/braids \
+	../sources/Externals/Braids/stmlib/utils
 
 #---------------------------------------------------------------------------------
 # Linux
@@ -259,7 +265,7 @@ COMMONFILES := \
 	char.o n_assert.o fixed.o wildcard.o \
 	SyncMaster.o TablePlayback.o Player.o \
 	Table.o TableView.o\
-	InstrumentBank.o WavFileWriter.o WavFile.o MidiInstrument.o Filters.o SampleVariable.o SampleInstrument.o SamplePool.o CommandList.o FxPrinter.o\
+	InstrumentBank.o WavFileWriter.o WavFile.o MidiInstrument.o PigtailInstrument.o Filters.o SampleVariable.o SampleInstrument.o SamplePool.o CommandList.o FxPrinter.o\
 	PersistencyService.o Persistent.o \
 	Observable.o SingletonRegistry.o \
 	Audio.o AudioMixer.o AudioOutDriver.o AudioDriver.o \
@@ -272,7 +278,9 @@ COMMONFILES := \
 	SoundFontPreset.o SoundFontManager.o SoundFontSample.o \
 	ENAB.o HYDRA.o OMEGA.o RIFF.o SFDETECT.o SFLOOKUP.o SFNAV.o SFREADER.o WIN_MEM.o \
 	HexBuffers.o lz.o \
-	tinyxmlparser.o tinyxml.o tinyxmlerror.o tinystr.o Tiny2NosStub.o
+	tinyxmlparser.o tinyxml.o tinyxmlerror.o tinystr.o Tiny2NosStub.o \
+	macro_oscillator.o analog_oscillator.o digital_oscillator.o resources.o random.o \
+	host_rate.o
 
 #---------------------------------------------------------------------------------
 # Linux

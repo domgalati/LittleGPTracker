@@ -1,5 +1,6 @@
 #include "InstrumentView.h"
 #include "Application/Instruments/MidiInstrument.h"
+#include "Application/Instruments/PigtailInstrument.h"
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
 #include "Application/Model/Config.h"
@@ -57,6 +58,11 @@ void InstrumentView::onInstrumentChange() {
 			break ;
 		case IT_SAMPLE:
 			fillSampleParameters() ;
+			break ;
+		case IT_PIGTAIL:
+			fillPigtailParameters() ;
+			break ;
+		default:
 			break ;
 	} ;
 
@@ -266,6 +272,33 @@ void InstrumentView::fillMidiParameters() {
 
 } ;
 
+void InstrumentView::fillPigtailParameters() {
+
+	int i=viewData_->currentInstrument_ ;
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	I_Instrument *instr=bank->GetInstrument(i) ;
+	GUIPoint position=GetAnchor() ;
+
+	Variable *v=instr->FindVariable(PTIP_SHAPE) ;
+	UIIntVarField *f1=new UIIntVarField(position,*v,"shape: %s",0,v->GetListSize()-1,1,1) ;
+	T_SimpleList<UIField>::Insert(f1) ;
+	f1->SetFocus() ;
+
+	position._y+=1 ;
+	v=instr->FindVariable(PTIP_TIMBRE) ;
+	f1=new UIIntVarField(position,*v,"timbre: %2.2X",0,0xFF,1,0x10) ;
+	T_SimpleList<UIField>::Insert(f1) ;
+
+	position._y+=1 ;
+	v=instr->FindVariable(PTIP_COLOR) ;
+	f1=new UIIntVarField(position,*v,"color: %2.2X",0,0xFF,1,0x10) ;
+	T_SimpleList<UIField>::Insert(f1) ;
+
+	position._y+=2 ;
+	v=instr->FindVariable(PTIP_VOLUME) ;
+	f1=new UIIntVarField(position,*v,"volume: %d [%2.2X]",0,255,1,10) ;
+	T_SimpleList<UIField>::Insert(f1) ;
+} ;
 
 void InstrumentView::warpToNext(int offset) {
 	int instrument=viewData_->currentInstrument_+offset ;
@@ -380,8 +413,10 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 	            InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
 	            I_Instrument *instr=bank->GetInstrument(i) ;
                 Variable *v=instr->FindVariable(SIP_TABLE) ;
-                v->SetInt(-1) ;
-                isDirty_=true ;
+                if (v) {
+                    v->SetInt(-1) ;
+                    isDirty_=true ;
+                }
 		   } ;
         }
         if (mask&EPBM_L) {

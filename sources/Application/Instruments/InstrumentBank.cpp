@@ -3,7 +3,9 @@
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
 #include "Application/Instruments/MidiInstrument.h"
+#include "Application/Instruments/PigtailInstrument.h"
 #include "System/io/Status.h"
+#include "System/Console/Trace.h"
 #include "Application/Utils/char.h"
 #include "Application/Model/Config.h"
 #include "Application/Persistency/PersistencyService.h"
@@ -11,7 +13,8 @@
 
 char *InstrumentTypeData[IT_LAST]= {
 	"Sample",
-	"Midi"
+	"Midi",
+	"Pigtail"
 } ;
 
 
@@ -27,6 +30,9 @@ InstrumentBank::InstrumentBank():Persistent("INSTRUMENTBANK") {
         MidiInstrument *s=new MidiInstrument() ;
         s->SetChannel(i) ;
         instrument_[MAX_SAMPLEINSTRUMENT_COUNT+i]=s ;
+    }
+	for (int i=0;i<MAX_PIGTAILINSTRUMENT_COUNT;i++) {
+        instrument_[PIGTAIL_INSTRUMENT_BASE+i]=new PigtailInstrument() ;
     }
     Status::Set("All instrument loaded") ;
 } ;
@@ -124,19 +130,31 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
 			if (id<MAX_INSTRUMENT_COUNT) {
         I_Instrument *instr=instrument_[id] ;
 				if (instr->GetType()!=it) {
-					delete instr ;
+					I_Instrument *created=0 ;
 					switch (it) {
 						case IT_SAMPLE:
-							instr=new SampleInstrument() ;
+							created=new SampleInstrument() ;
 							break ;
 						case IT_MIDI:
-							instr=new MidiInstrument() ;
+							created=new MidiInstrument() ;
+							break ;
+						case IT_PIGTAIL:
+							created=new PigtailInstrument() ;
+							break ;
+						default:
+							// Unknown type (e.g. saved by a newer build): leave
+							// the slot's default instrument in place, skip params
+							Trace::Error("Unknown instrument type '%s' for instrument %s, leaving slot empty",instype?instype:"",hexid) ;
 							break ;
 					}
-					instrument_[id]=instr ;
+					if (created) {
+						delete instr ;
+						instrument_[id]=created ;
+					}
+					instr=created ;
 				} ;
 
-        TiXmlElement *param=current->FirstChildElement() ;
+        TiXmlElement *param=(instr)?current->FirstChildElement():0 ;
 				while (param) {
 					const char *name=param->Attribute("NAME") ;
 					const char *value=param->Attribute("VALUE") ;
@@ -165,7 +183,7 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
 					}
 					param=param->NextSiblingElement() ;
 				}
-				if (doc->version_<38) {
+				if ((instr)&&(doc->version_<38)) {
 					Variable *cvl=instr->FindVariable(SIP_CRUSHVOL) ;
 					Variable *vol=instr->FindVariable(SIP_VOLUME);
 					Variable *crs=instr->FindVariable(SIP_CRUSH) ;
@@ -221,10 +239,16 @@ unsigned short InstrumentBank::Clone(unsigned short i) {
 
 	delete dst ;
   
-	if (src->GetType()==IT_SAMPLE) {
-		dst=new SampleInstrument() ;
-	} else {
-		dst=new MidiInstrument() ;
+	switch (src->GetType()) {
+		case IT_SAMPLE:
+			dst=new SampleInstrument() ;
+			break ;
+		case IT_PIGTAIL:
+			dst=new PigtailInstrument() ;
+			break ;
+		default:
+			dst=new MidiInstrument() ;
+			break ;
 	}
 	instrument_[next]=dst ;
 	IteratorPtr<Variable> it(src->GetIterator()) ;
