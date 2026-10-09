@@ -1,4 +1,4 @@
-# Little Piggy Tracker: PIGTAIL fork
+# Little Piggy Tracker: Synthesis fork
 
 This is a fork of [djdiskmachine/LittleGPTracker](https://github.com/djdiskmachine/LittleGPTracker) (Little Piggy Tracker, f.k.a. LittleGPTracker), which in turn builds on the original work of [Marc Nostromo (m-.-n)](https://github.com/Mdashdotdashn/LittleGPTracker).
 
