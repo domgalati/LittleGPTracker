@@ -9,8 +9,9 @@
 #define PTIP_TIMBRE MAKE_FOURCC('T','M','B','R')
 #define PTIP_COLOR  MAKE_FOURCC('C','O','L','R')
 
-// Synth voice driven by the Mutable Instruments Braids macro oscillator
-// (sources/Externals/Braids). Braids renders fixed blocks of mono int16 at
+// Synth voice driven by the Braids macro oscillator by Émilie Gillet
+// (github.com/pichenettes/eurorack, MIT license; ported in
+// sources/Externals/Braids). Braids renders fixed blocks of mono int16 at
 // its own rate; each song channel keeps a small FIFO of rendered samples so
 // LGPT's variable sized Render calls are served from a continuous stream.
 

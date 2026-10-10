@@ -9,7 +9,8 @@ FONT := original.bmp
 include $(PWD)/Makefile.$(PLATFORM)
 
 # Third party code that includes its headers relative to its own root
-# (Mutable Instruments Braids: "braids/..." and "stmlib/...")
+# (Braids and stmlib by Émilie Gillet, github.com/pichenettes/eurorack, MIT
+# license: "braids/..." and "stmlib/...")
 CXXFLAGS += -I$(PWD)/../sources/Externals/Braids
 
 # Braids objects. Braids' fixed-point code relies on signed integer overflow

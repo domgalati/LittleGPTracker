@@ -14,7 +14,7 @@ This fork is licensed under the [GPLv3](LICENSE), like upstream. Bundled third-p
 
 ### PIGTAIL: a synth instrument
 
-LGPT's instruments have so far been sample players (and MIDI out). PIGTAIL adds a new instrument type that generates sound instead of playing back a sample. Its voice is the macro oscillator from [Mutable Instruments Braids](https://pichenettes.github.io/mutable-instruments-documentation/modules/braids/), which gives you 48 oscillator models in one instrument.
+LGPT's instruments have so far been sample players (and MIDI out). PIGTAIL adds a new instrument type that generates sound instead of playing back a sample. Its voice is the Braids macro oscillator by Émilie Gillet ([github.com/pichenettes/eurorack](https://github.com/pichenettes/eurorack), MIT license), which gives you 48 oscillator models in one instrument.
 
 PIGTAIL instruments live in slots `90`–`9F` (instrument types are fixed per slot: `00`–`7F` are samples, `80`–`8F` MIDI). Put one of those numbers in a phrase's instrument column, and its instrument view shows these parameters:
 
@@ -81,4 +81,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Upstream changes can be pulled in from t
 
 - [Marc Nostromo](https://github.com/Mdashdotdashn/LittleGPTracker), original author of LittleGPTracker
 - [djdiskmachine](https://github.com/djdiskmachine/LittleGPTracker) and contributors, maintainers of Little Piggy Tracker
-- [Émilie Gillet / Mutable Instruments](https://github.com/pichenettes/eurorack), author of Braids and stmlib (MIT licensed)
+- Émilie Gillet, author of Braids and stmlib ([github.com/pichenettes/eurorack](https://github.com/pichenettes/eurorack), MIT license)
+
+This project is not affiliated with or endorsed by Mutable Instruments.

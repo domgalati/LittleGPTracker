@@ -3,7 +3,7 @@
 LittleGPTracker is licensed under the GPLv3 (see [LICENSE](LICENSE)). It
 includes the third-party code listed below, which keeps its own license.
 
-## Mutable Instruments Braids and stmlib
+## Braids and stmlib (Émilie Gillet, github.com/pichenettes/eurorack, MIT license)
 
 Used by the PIGTAIL instrument (`sources/Application/Instruments/PigtailInstrument.cpp`)
 as its oscillator.
@@ -26,7 +26,7 @@ header):
 - Source files renamed from `.cc` to `.cpp` to match this project's build rules.
 - Braids is built for 96kHz; LittleGPTracker runs it at the audio driver's rate.
   `braids/host_rate.h` and `braids/host_rate.cpp` are LittleGPTracker additions
-  (GPLv3, not Mutable Instruments code) holding the host rate. Rate dependent
+  (GPLv3, not part of the upstream code) holding the host rate. Rate dependent
   constants in `digital_oscillator.cpp`, `digital_oscillator.h`,
   `analog_oscillator.cpp` and `svf.h` are rescaled from it; each change is
   marked with an `LGPT:` comment. At 96kHz the patched code renders
