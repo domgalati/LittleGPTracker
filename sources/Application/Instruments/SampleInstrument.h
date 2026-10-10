@@ -67,6 +67,8 @@ public:
 
 	   virtual InstrumentType GetType() { return IT_SAMPLE ; } ;
   	   virtual void ProcessCommand(int channel,FourCC cc,ushort value) ;
+	   // The commands ProcessCommand acts on (instrument type registry)
+	   static const FourCC Commands[] ;
 	   virtual void Purge() ;
 	   virtual int GetTable() ;
 	   virtual bool GetTableAutomation();

@@ -8,6 +8,13 @@
 // a row in the table and the object in COMMONFILES (projects/Makefile).
 // The instrument screen still needs a fill function for it (InstrumentView).
 
+// Help for a command that a type reads differently from the text in
+// HelpLegend.h: the same three lines the command popup shows
+struct CommandHelp {
+	FourCC command ;
+	const char *line[3] ;
+} ;
+
 struct InstrumentTypeInfo {
 	InstrumentType type ;
 	const char *saveName ;            // TYPE attribute in the save file
@@ -16,6 +23,11 @@ struct InstrumentTypeInfo {
 	I_Instrument *(*create)(int slot) ;
 	int legacyFirst,legacyCount ;     // upstream slots for an entry with no
 	                                  // TYPE; -1,0 if none
+	const FourCC *commands ;          // the commands its ProcessCommand acts
+	                                  // on, I_CMD_NONE-terminated. Kept in the
+	                                  // type's .cpp, next to ProcessCommand
+	const CommandHelp *help ;         // its own help texts, I_CMD_NONE-
+	                                  // terminated; 0 if none
 } ;
 
 class InstrumentTypes {
@@ -29,6 +41,11 @@ public:
 	static const InstrumentTypeInfo *FindBySaveName(const char *name) ;
 	// The type an entry with no TYPE gets in that slot; 0 if none
 	static const InstrumentTypeInfo *FindByLegacySlot(int slot) ;
+	// Whether the type's ProcessCommand acts on the command
+	static bool Implements(const InstrumentTypeInfo *info,FourCC command) ;
+	// The type's own help for the command; 0 if HelpLegend.h's applies
+	static const CommandHelp *FindHelp(const InstrumentTypeInfo *info,
+	                                   FourCC command) ;
 } ;
 
 #endif

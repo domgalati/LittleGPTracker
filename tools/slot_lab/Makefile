@@ -26,6 +26,10 @@
 #   make fixtures    regenerate the generated and hand-made fixtures. Changes
 #                    the inputs: only when a fixture's definition changes
 #   make trees       build both binaries
+#   make cmdlists    check that the command lists the command popup reads
+#                    (each instrument type's, the player's phrase list and
+#                    the table player's) match the switches they describe
+#                    (cmdlists.py). Exits 1 on any difference
 #   make play        play scenarios (slot_lab play) on fixtures/up-basic
 #                    (flows on a copy of it, since it imports samples),
 #                    then a dump of every fixture, under ASan + UBSan: the
@@ -87,7 +91,7 @@ SAN_SRC   = $(foreach f,$(wildcard $(foreach d,$(SAN_DIRS),$(ROOT)/sources/$(d)/
 SAN_SKIP  = LINUXMain.o $(notdir $(SAN_SRC:.cpp=.o))
 PLAY     := range clone view dlay flows types
 
-.PHONY: trees check compare mem baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean play
+.PHONY: trees check compare mem baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean play cmdlists
 
 trees: $(addprefix $(BUILD)/slot_lab_,$(TREES))
 
@@ -208,6 +212,9 @@ mem: $(addprefix $(BUILD)/slot_lab_,$(TREES))
 	@for t in $(TREES); do for fp in $(ALL); do f=$${fp%%=*}; p=$${fp#*=}; \
 	  printf "%-9s %-34s " $$t $$f; $(BUILD)/slot_lab_$$t mem $$p 2>/dev/null | grep "^project after"; \
 	done; done
+
+cmdlists:
+	@python3 -I cmdlists.py $(ROOT)/sources
 
 # ------------------------------------------------------------- fixtures
 

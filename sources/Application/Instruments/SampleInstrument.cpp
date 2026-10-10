@@ -1083,6 +1083,14 @@ void SampleInstrument::Update(Observable &o,I_ObservableData *d)
 	};
 } ;
 
+// Every command the switch below handles: the command popup dims the others
+// for a Sample. Keep the two in step (tools/slot_lab: make cmdlists)
+const FourCC SampleInstrument::Commands[]={
+	I_CMD_LPOF,I_CMD_PLOF,I_CMD_ARPG,I_CMD_VOLM,I_CMD_PAN_,I_CMD_FCUT,
+	I_CMD_FRES,I_CMD_FBMX,I_CMD_FBTN,I_CMD_PTCH,I_CMD_LEGA,I_CMD_PFIN,
+	I_CMD_RTRG,I_CMD_FLTR,I_CMD_CRSH,I_CMD_NONE
+} ;
+
 void SampleInstrument::ProcessCommand(int channel,FourCC cc,ushort value) {
 	
  	renderParams *rp=renderParams_+channel ;

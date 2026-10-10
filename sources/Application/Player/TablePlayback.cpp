@@ -107,6 +107,12 @@ bool TablePlayback::GetAutomation() {
 	return automated_ ;
 } ;
 
+// Every command ProcessLocalCommand handles. Keep the two in step
+// (tools/slot_lab: make cmdlists)
+const FourCC TablePlayback::TableCommands[]={
+	I_CMD_HOP,I_CMD_KILL,I_CMD_IRTG,I_CMD_GROV,I_CMD_NONE
+} ;
+
 bool TablePlayback::ProcessLocalCommand(int row,FourCC *commandList,ushort *paramList,TablePlayerChange &tpc) {
 
 	bool hopped=false ;

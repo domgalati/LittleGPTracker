@@ -18,6 +18,9 @@ public:
 	void Init(int i) ;
 	void ProcessStep(TablePlayerChange &tpc) ;
 	bool ProcessLocalCommand(int row,FourCC *commandList,ushort *paramList,TablePlayerChange &tpc) ;
+	// The table commands the table player acts on itself (the command popup
+	// never dims them in a table), I_CMD_NONE-terminated
+	static const FourCC TableCommands[] ;
 	void Start(I_Instrument *,Table&,bool automated) ;
 	void Stop() ;
 	int GetPlaybackPosition(int channel) ;

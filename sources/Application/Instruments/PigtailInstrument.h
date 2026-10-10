@@ -31,6 +31,8 @@ public:
 	// fills interleaved stereo Q15 fixed point
 	virtual bool Render(int channel, fixed *buffer, int size, int flags);
 	virtual void ProcessCommand(int channel,FourCC cc,ushort value) ;
+	// The commands ProcessCommand acts on (instrument type registry)
+	static const FourCC Commands[] ;
 
 	virtual bool IsInitialized() { return true ; } ;
 

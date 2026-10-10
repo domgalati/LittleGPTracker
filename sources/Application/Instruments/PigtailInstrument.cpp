@@ -1,4 +1,5 @@
 #include "PigtailInstrument.h"
+#include "CommandList.h"
 #include "Services/Audio/Audio.h"
 #include "braids/macro_oscillator.h"
 #include "braids/host_rate.h"
@@ -198,6 +199,12 @@ bool PigtailInstrument::Render(int channel, fixed *buffer, int size, int flags) 
 		remaining-=count ;
 	}
 	return true ;
+} ;
+
+// Every command ProcessCommand handles: the command popup dims the others
+// for PIGTAIL. Keep the two in step (tools/slot_lab: make cmdlists)
+const FourCC PigtailInstrument::Commands[]={
+	I_CMD_NONE
 } ;
 
 void PigtailInstrument::ProcessCommand(int channel, FourCC cc, ushort value) {

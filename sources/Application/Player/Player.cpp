@@ -637,6 +637,13 @@ void Player::ProcessCommands() {
     }
 }
 
+// Every command ProcessChannelCommand handles, plus DLAY (updatePhrasePos)
+// and HOP's jump (getChannelHop). Keep the list in step with them
+// (tools/slot_lab: make cmdlists)
+const FourCC Player::PhraseCommands[] = {I_CMD_KILL, I_CMD_TMPO, I_CMD_TABL,
+                                         I_CMD_GROV, I_CMD_HOP,  I_CMD_STOP,
+                                         I_CMD_DLAY, I_CMD_NONE};
+
 bool Player::ProcessChannelCommand(int channel, FourCC cmd, ushort param) {
 
     I_Instrument *instr = mixer_->GetInstrument(channel);

@@ -72,6 +72,9 @@ public:
 
     void ProcessCommands();
     bool ProcessChannelCommand(int channel,FourCC cmd,ushort param) ;
+    // The phrase commands the player acts on itself (the command popup
+    // never dims them in a phrase), I_CMD_NONE-terminated
+    static const FourCC PhraseCommands[] ;
 
 	void StartStreaming(const Path &path) ;
 	void StopStreaming() ;

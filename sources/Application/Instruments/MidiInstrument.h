@@ -2,6 +2,7 @@
 #define _MIDI_INSTRUMENT_H_
 
 #include "I_Instrument.h"
+#include "InstrumentTypes.h"
 #include "Application/Model/Song.h"
 #include "Services/Midi/MidiService.h"
 
@@ -33,6 +34,10 @@ public:
       // should always fill interleaved stereo / 16bit
       virtual bool Render(int channel, fixed *buffer, int size, int flags);
       virtual void ProcessCommand(int channel,FourCC cc,ushort value) ;
+      // The commands ProcessCommand acts on, and help for those it reads
+      // differently from a Sample (instrument type registry)
+      static const FourCC Commands[] ;
+      static const CommandHelp Help[] ;
 
       virtual bool IsInitialized() ;
 

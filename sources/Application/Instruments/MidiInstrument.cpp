@@ -158,6 +158,19 @@ bool MidiInstrument::IsInitialized() {
 	return true ; // Always initialised
 } ;
 
+// Every command the switch below handles: the command popup dims the others
+// for MIDI. Keep the two in step (tools/slot_lab: make cmdlists)
+const FourCC MidiInstrument::Commands[] = {I_CMD_RTRG, I_CMD_MVEL, I_CMD_VOLM,
+                                           I_CMD_MCHD, I_CMD_MDCC, I_CMD_MDPG,
+                                           I_CMD_NONE};
+
+// The popup's help for the commands MIDI reads differently from a Sample
+// (whose reading HelpLegend.h describes)
+const CommandHelp MidiInstrument::Help[] = {
+    {I_CMD_VOLM, {"VOLuMe:--bb", "set the channel volume", "(CC7) to bb/2 at once"}},
+    {I_CMD_RTRG, {"ReTRiG:--bb", "send the held notes again", "every bb ticks, 00 stops"}},
+    {I_CMD_NONE, {"", "", ""}}};
+
 void MidiInstrument::ProcessCommand(int channel, FourCC cc, ushort value) {
     // Do not process commands if muted.
     if (muted_[channel])
