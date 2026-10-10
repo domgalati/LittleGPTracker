@@ -577,7 +577,8 @@ int main(int argc, char **argv) {
   st.sampleRate_ = 44100;
   Audio::Install(new TestAudio(st));
   InstrumentBank *bank = new InstrumentBank();
-  gPig = (PigtailInstrument *)bank->GetInstrument(PIGTAIL_INSTRUMENT_BASE);
+  // Slots start empty: put a PIGTAIL in one
+  gPig = (PigtailInstrument *)bank->Create(0x00, IT_PIGTAIL);
   std::string mode = argv[1];
   clock_t t0 = clock();
   if (mode == "audit") modeAudit();

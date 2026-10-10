@@ -244,25 +244,23 @@ void Project::Purge() {
  
 void Project::PurgeInstruments(bool removeFromDisk) {
 
-    bool used[MAX_INSTRUMENT_COUNT] = {false};
+    bool used[256] = {false};
 
     unsigned char *data=song_->phrase_->instr_ ;
 
 	for (int i=0;i<PHRASE_COUNT;i++) {
 		for (int j=0;j<16;j++) {
-			if (*data!=0xFF) {
-				NAssert(*data<MAX_INSTRUMENT_COUNT) ;
-				used[*data]=true ;
-			}
+			used[*data]=true ;
 			data++ ;
 		}
 	}
 
+	// Sample slots no phrase plays are emptied; other types stay
+
 	InstrumentBank *bank=GetInstrumentBank() ;
 	for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {
-		if (!used[i]) {
-			I_Instrument *instrument=bank->GetInstrument(i) ;
-			instrument->Purge() ;
+		if ((!used[i])&&(bank->GetInstrument(i)->GetType()==IT_SAMPLE)) {
+			bank->Empty(i) ;
 		}
 	}
 
@@ -360,110 +358,8 @@ void Project::SaveContent(TiXmlNode *node) {
 	}
 } ;
 
-void Project::LoadFirstGen(const char *root) {
-
-
-	char filename[1024] ;
-	sprintf(filename,"%s/lgptsav.dat",root) ;
-
-	FileSystem *fs=FileSystem::GetInstance() ;
-	I_File *file=fs->Open(filename,"r") ;
-
-	if (file) {
-		// Read file
-		int tempo ;
-		SyncMaster::GetInstance()->SetTableRatio(2) ;
-		file->Read(&tempo,sizeof(int),1) ;
-		Variable *v=FindVariable(VAR_TEMPO) ;
-		v->SetInt(tempo);
-		file->Read(song_->data_,sizeof(char),SONG_CHANNEL_COUNT*256) ;
-		file->Read(song_->chain_->data_,sizeof(char),CHAIN_COUNT*16) ;
-		file->Read(song_->chain_->transpose_,sizeof(char),CHAIN_COUNT*16) ;
-		file->Read(song_->phrase_->note_,sizeof(char),PHRASE_COUNT*16) ;
-		file->Read(song_->phrase_->instr_,sizeof(char),PHRASE_COUNT*16) ;
-
-		// read instrument data
-		int buffer[LEGACY_INSTRUMENT_COUNT*3] ; // Three parameters per instruments
-		int byteRead=file->Read(buffer,sizeof(int),LEGACY_INSTRUMENT_COUNT*3) ;
-		if (byteRead>0) {
-			int *current=buffer ;
-			InstrumentBank *bank=this->instrumentBank_ ;
-			for (int i=0;i<LEGACY_INSTRUMENT_COUNT;i++) {
-				I_Instrument *instr=bank->GetInstrument(i) ;
-				int count=0 ;
-				IteratorPtr<Variable> it(instr->GetIterator()) ;
-				for (it->Begin();count<3;it->Next()) {
-					Variable &ip=it->CurrentItem() ;
-					ip.SetInt(*current++) ;
-					count++ ;
-				}
-			}
-		}
-		file->Close() ;
-		delete file ;
-
-		// Restore chain & phrase allocation table
-		
-		unsigned char *data=song_->data_ ;
-		for (int i=0;i<256*SONG_CHANNEL_COUNT;i++) {
-			if (*data!=0xFF) {
-				song_->chain_->SetUsed(*data) ;
-			} 
-		    data++ ;
-		}
-                
-        data=song_->chain_->data_ ;        
-
-		for (int i=0;i<CHAIN_COUNT;i++) {
-            for (int j=0;j<16;j++) {
-                if (*data!=0xFF) {
-                    song_->chain_->SetUsed(i) ;
-                    song_->phrase_->SetUsed(*data) ;
-                }
-                data++ ;
-            } ;	
-        }
-
-        data=song_->phrase_->note_ ;
-             
-		for (int i=0;i<PHRASE_COUNT;i++) {
-            for (int j=0;j<16;j++) {
-                if (*data!=0xFF) {
-                    song_->phrase_->SetUsed(i) ;
-                }
-                data++ ;
-            } ;	
-        }	
-        
-        // TEMP: clear out Phrase 0xFE
-        
-		data=song_->phrase_->note_+0xFE*16 ;
-		for (int i=0;i<16;i++) {
-			*data++=0xFF ;
-		} ;
-        // Trace output unused instruments to the console
-        
-        bool used[MAX_INSTRUMENT_COUNT] ;
-        for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {
-            used[i]=false ;
-        } ;	
-        
-        data=song_->phrase_->instr_ ;
-        for (int i=0;i<PHRASE_COUNT;i++) {
-            for (int j=0;j<16;j++) {
-                if (*data!=0xFF) {
-                    used[*data]=true ;
-                }
-                data++ ;
-            } ;
-        } ;
-        
-        //for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {
-        //    if ((!used[i])&&(song_->instrument_[i]->IsInitialized())) {
-        //        Trace::Dump("Instrument %x not used",i) ;
-        //    }
-        //} ;	
-	}
+void Project::OnLoaded() {
+	instrumentBank_->RestoreLegacyMidi(song_->phrase_->instr_) ;
 }
 
 void Project::buildMidiDeviceList() {

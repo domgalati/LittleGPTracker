@@ -55,7 +55,9 @@ public:
   virtual void SaveContent(TiXmlNode *node);
   virtual void RestoreContent(TiXmlElement *element);
 
-  void LoadFirstGen(const char *root);
+  // Load rules that need the whole file (the song and the instruments
+  // load in either order): call after PersistencyService::Load
+  void OnLoaded();
 
 protected:
   void buildMidiDeviceList();

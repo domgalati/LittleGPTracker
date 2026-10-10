@@ -729,7 +729,7 @@ I7C Sample empty, defaults
 I7D Sample empty, defaults
 I7E Sample empty, defaults
 I7F Sample empty, defaults
-I80 Midi
+I80 Midi, defaults
     channel=0
     note length=0
     volume=255

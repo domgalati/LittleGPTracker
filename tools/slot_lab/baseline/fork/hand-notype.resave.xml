@@ -1085,7 +1085,7 @@
             <DATA VALUE="0" LENGTH="32" />
         </PARAM2>
     </SONG>
-    <INSTRUMENTBANK>
+    <INSTRUMENTBANK LAYOUT="2">
         <INSTRUMENT ID="00" TYPE="Sample">
             <PARAM NAME="sample" VALUE="a_kick.wav" />
             <PARAM NAME="volume" VALUE="96" />
@@ -1233,99 +1233,8 @@
             <PARAM NAME="table" VALUE="-1" />
             <PARAM NAME="table automation" VALUE="false" />
         </INSTRUMENT>
-        <INSTRUMENT ID="81" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="1" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="82" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="2" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="83" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="3" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="84" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="4" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
         <INSTRUMENT ID="85" TYPE="Midi">
             <PARAM NAME="channel" VALUE="5" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="86" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="6" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="87" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="7" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="88" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="8" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="89" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="9" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="8A" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="10" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="8B" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="11" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="8C" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="12" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="8D" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="13" />
-            <PARAM NAME="note length" VALUE="0" />
-            <PARAM NAME="volume" VALUE="255" />
-            <PARAM NAME="table" VALUE="-1" />
-            <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="8E" TYPE="Midi">
-            <PARAM NAME="channel" VALUE="14" />
             <PARAM NAME="note length" VALUE="0" />
             <PARAM NAME="volume" VALUE="255" />
             <PARAM NAME="table" VALUE="-1" />
@@ -1337,102 +1246,6 @@
             <PARAM NAME="volume" VALUE="255" />
             <PARAM NAME="table" VALUE="-1" />
             <PARAM NAME="table automation" VALUE="false" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="90" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="91" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="92" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="93" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="94" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="95" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="96" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="97" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="98" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="99" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="9A" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="9B" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="9C" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="9D" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="9E" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
-        </INSTRUMENT>
-        <INSTRUMENT ID="9F" TYPE="Pigtail">
-            <PARAM NAME="shape" VALUE="csaw" />
-            <PARAM NAME="timbre" VALUE="128" />
-            <PARAM NAME="color" VALUE="128" />
-            <PARAM NAME="volume" VALUE="64" />
         </INSTRUMENT>
     </INSTRUMENTBANK>
     <TABLES />

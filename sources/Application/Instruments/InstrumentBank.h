@@ -13,19 +13,31 @@ public:
 	InstrumentBank() ;
 	~InstrumentBank() ;
 	void AssignDefaults() ;
-	// Never null: slot numbers outside the bank get the empty stand-in
+	// Never null: empty slots and numbers outside the bank get the empty
+	// stand-in
 	I_Instrument *GetInstrument(int i) ;
+	bool IsSlotEmpty(int i) ;
 	virtual void SaveContent(TiXmlNode *node);
 	virtual void RestoreContent(TiXmlElement *element);
+	// Load rule that needs the whole file: run after the project has loaded
+	void RestoreLegacyMidi(const unsigned char *phraseInstruments) ;
 	void Init() ;
 	void OnStart() ;
-	unsigned short GetNext() ;
+	// Lowest empty slot, or NO_MORE_INSTRUMENT
+	unsigned short FirstEmpty() ;
+	// A new instrument of that type in slot i, replacing what was there.
+	// 0 for a number outside the bank or a type without a registry row
+	I_Instrument *Create(int i,InstrumentType type) ;
+	void Empty(int i) ;
+	// Into the lowest empty slot
 	unsigned short Clone(unsigned short i) ;
 private:
 	void replace(int i,I_Instrument *instrument) ;
 
 	I_Instrument *instrument_[MAX_INSTRUMENT_COUNT] ;
 	EmptyInstrument empty_ ;
+	// LAYOUT attribute of the loaded file: 1 for files without one
+	int layout_ ;
 } ;
 
 #endif

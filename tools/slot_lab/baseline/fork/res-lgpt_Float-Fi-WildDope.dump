@@ -1,8 +1,8 @@
-# slot_lab dump, tree fork 17711c6
+# slot_lab dump, tree fork 871d141
 load ok, table ratio 1
 pool 14 (result 0): AH Erick.wav ANIME HAHA.wav Bass Sub G# - Adje - Back on my feet (1).wav C4.wav Cmon - Cookin Bananas - Aqui te pillo aqui temazo.wav Col 1 - AX (1).wav HOWWEDO.wav Vinyl - 3 (1).wav Vox - FoReal - KeepitToroRmx.wav Vox - checkitout - Cookin Soul - Diggin.wav Yo Yo - Freddie Gibbs - Walk in with the M.O..wav dirtyh0ps_consolidated.wav holypiano1_consolidated.wav synth ~ low.wav
 project tempo=97 master=100 pregain=130 softclip=Medium [2] softclipGain=[unity] [0] wrap=false transpose=0 scale=None (Chromatic) [0] renderMode=Off [0] midi=(null) [0]
-slots A0
+slots FF
 I00 Sample, 167 rows in phrases 00 01 02 03 04 05 06 07 08 09 17 18 19 1A 1B 1C 1D 1E
     sample=dirtyh0ps_consolidated.wav [11]
     volume=112
@@ -30,21 +30,6 @@ I00 Sample, 167 rows in phrases 00 01 02 03 04 05 06 07 08 09 17 18 19 1A 1B 1C 
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I01 Sample empty, defaults
-I02 Sample empty, defaults
-I03 Sample empty, defaults
-I04 Sample empty, defaults
-I05 Sample empty, defaults
-I06 Sample empty, defaults
-I07 Sample empty, defaults
-I08 Sample empty, defaults
-I09 Sample empty, defaults
-I0A Sample empty, defaults
-I0B Sample empty, defaults
-I0C Sample empty, defaults
-I0D Sample empty, defaults
-I0E Sample empty, defaults
-I0F Sample empty, defaults
 I10 Sample, 44 rows in phrases 0C 0D 0E 0F 10 11 12 13 14 15 16
     sample=holypiano1_consolidated.wav [12]
     volume=128
@@ -72,21 +57,6 @@ I10 Sample, 44 rows in phrases 0C 0D 0E 0F 10 11 12 13 14 15 16
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I11 Sample empty, defaults
-I12 Sample empty, defaults
-I13 Sample empty, defaults
-I14 Sample empty, defaults
-I15 Sample empty, defaults
-I16 Sample empty, defaults
-I17 Sample empty, defaults
-I18 Sample empty, defaults
-I19 Sample empty, defaults
-I1A Sample empty, defaults
-I1B Sample empty, defaults
-I1C Sample empty, defaults
-I1D Sample empty, defaults
-I1E Sample empty, defaults
-I1F Sample empty, defaults
 I20 Sample, 1 rows in phrases 20
     sample=Col 1 - AX (1).wav [5]
     volume=68
@@ -114,21 +84,6 @@ I20 Sample, 1 rows in phrases 20
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I21 Sample empty, defaults
-I22 Sample empty, defaults
-I23 Sample empty, defaults
-I24 Sample empty, defaults
-I25 Sample empty, defaults
-I26 Sample empty, defaults
-I27 Sample empty, defaults
-I28 Sample empty, defaults
-I29 Sample empty, defaults
-I2A Sample empty, defaults
-I2B Sample empty, defaults
-I2C Sample empty, defaults
-I2D Sample empty, defaults
-I2E Sample empty, defaults
-I2F Sample empty, defaults
 I30 Sample, 6 rows in phrases 30 31
     sample=Bass Sub G# - Adje - Back on my feet (1).wav [2]
     volume=0
@@ -156,21 +111,6 @@ I30 Sample, 6 rows in phrases 30 31
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I31 Sample empty, defaults
-I32 Sample empty, defaults
-I33 Sample empty, defaults
-I34 Sample empty, defaults
-I35 Sample empty, defaults
-I36 Sample empty, defaults
-I37 Sample empty, defaults
-I38 Sample empty, defaults
-I39 Sample empty, defaults
-I3A Sample empty, defaults
-I3B Sample empty, defaults
-I3C Sample empty, defaults
-I3D Sample empty, defaults
-I3E Sample empty, defaults
-I3F Sample empty, defaults
 I40 Sample, 45 rows in phrases 22 23 24 25 26 27 28 29 2A 40 41 42 49 4A 4B
     sample=C4.wav [3]
     volume=48
@@ -225,20 +165,6 @@ I41 Sample, 56 rows in phrases 43 44 45 46 47 4C 4D 4E 4F 5A 5B 5C
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I42 Sample empty, defaults
-I43 Sample empty, defaults
-I44 Sample empty, defaults
-I45 Sample empty, defaults
-I46 Sample empty, defaults
-I47 Sample empty, defaults
-I48 Sample empty, defaults
-I49 Sample empty, defaults
-I4A Sample empty, defaults
-I4B Sample empty, defaults
-I4C Sample empty, defaults
-I4D Sample empty, defaults
-I4E Sample empty, defaults
-I4F Sample empty, defaults
 I50 Sample, 1 rows in phrases 57
     sample=Vox - checkitout - Cookin Soul - Diggin.wav [9]
     volume=128
@@ -266,7 +192,6 @@ I50 Sample, 1 rows in phrases 57
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I51 Sample empty, defaults
 I52 Sample, 1 rows in phrases 50
     sample=HOWWEDO.wav [6]
     volume=128
@@ -429,45 +354,6 @@ I57 Sample, 1 rows in phrases 55
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I58 Sample empty, defaults
-I59 Sample empty, defaults
-I5A Sample empty, defaults
-I5B Sample empty, defaults
-I5C Sample empty, defaults
-I5D Sample empty, defaults
-I5E Sample empty, defaults
-I5F Sample empty, defaults
-I60 Sample empty, defaults
-I61 Sample empty, defaults
-I62 Sample empty, defaults
-I63 Sample empty, defaults
-I64 Sample empty, defaults
-I65 Sample empty, defaults
-I66 Sample empty, defaults
-I67 Sample empty, defaults
-I68 Sample empty, defaults
-I69 Sample empty, defaults
-I6A Sample empty, defaults
-I6B Sample empty, defaults
-I6C Sample empty, defaults
-I6D Sample empty, defaults
-I6E Sample empty, defaults
-I6F Sample empty, defaults
-I70 Sample empty, defaults
-I71 Sample empty, defaults
-I72 Sample empty, defaults
-I73 Sample empty, defaults
-I74 Sample empty, defaults
-I75 Sample empty, defaults
-I76 Sample empty, defaults
-I77 Sample empty, defaults
-I78 Sample empty, defaults
-I79 Sample empty, defaults
-I7A Sample empty, defaults
-I7B Sample empty, defaults
-I7C Sample empty, defaults
-I7D Sample empty, defaults
-I7E Sample empty, defaults
 I7F Sample, 1 rows in phrases 80
     sample=Vinyl - 3 (1).wav [7]
     volume=168
@@ -495,7 +381,7 @@ I7F Sample, 1 rows in phrases 80
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I80 Midi
+I80 Midi, defaults
     channel=0
     note length=0
     volume=255
@@ -591,86 +477,6 @@ I8F Midi
     volume=255
     table=-1
     table automation=false
-I90 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I91 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I92 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I93 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I94 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I95 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I96 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I97 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I98 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I99 Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I9A Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I9B Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I9C Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I9D Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I9E Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
-I9F Pigtail
-    shape=csaw [0]
-    timbre=128
-    color=128
-    volume=64
 data song a0c16ef5 chains ad2db52e transposes 85d4b285
 data notes 28f1b85c instruments 6e939724 cmd1 5ace54dc param1 4100a053 cmd2 6ebd6775 param2 5ae76fa0
 data tables a648f79e grooves b4fca3dd

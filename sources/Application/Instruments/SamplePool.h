@@ -7,7 +7,8 @@
 #include "Application/Model/Song.h"
 #include "Foundation/Observable.h"
 
-#define MAX_PIG_SAMPLES MAX_SAMPLEINSTRUMENT_COUNT
+// The pool cap, independent of the instrument slot count
+#define MAX_PIG_SAMPLES 0x80
 
 enum SamplePoolEventType {
 	SPET_INSERT,

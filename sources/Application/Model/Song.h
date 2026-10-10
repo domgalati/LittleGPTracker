@@ -8,17 +8,9 @@
 #define SONG_CHANNEL_COUNT 8
 #define SONG_ROW_COUNT 256
 
-#define MAX_SAMPLEINSTRUMENT_COUNT 0x80
-#define MAX_MIDIINSTRUMENT_COUNT 0x10
-#define MAX_PIGTAILINSTRUMENT_COUNT 0x10
-
-// Slot layout: sample 0x00-0x7F, MIDI 0x80-0x8F, pigtail 0x90-0x9F
-#define PIGTAIL_INSTRUMENT_BASE (MAX_SAMPLEINSTRUMENT_COUNT+MAX_MIDIINSTRUMENT_COUNT)
-
-// Instrument count before pigtail slots existed (legacy binary save format)
-#define LEGACY_INSTRUMENT_COUNT (MAX_SAMPLEINSTRUMENT_COUNT+MAX_MIDIINSTRUMENT_COUNT)
-
-#define MAX_INSTRUMENT_COUNT (PIGTAIL_INSTRUMENT_BASE+MAX_PIGTAILINSTRUMENT_COUNT)
+// Instrument slots 00-FE, each empty or holding any type. FF in a phrase
+// means no instrument
+#define MAX_INSTRUMENT_COUNT 0xFF
 
 class Song:Persistent {
 public:

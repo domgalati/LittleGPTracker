@@ -12,6 +12,8 @@
 //                            variables, phrase references and data checksums
 //   save <projdir> <outdir>  load, then write <outdir>/lgptsav.dat with the
 //                            tree's own save code
+//   mem <projdir>            heap in use (glibc mallinfo2) after creating the
+//                            project and after loading it, and filled slots
 //   xml <file> <out>         parse a save file and write it back out with
 //                            TinyXML (decompresses an LZ save first, as the
 //                            loader does), to compare files written by hand
@@ -23,12 +25,17 @@
 //                            load, edit the song in memory and play it through
 //                            the real Player and mixer, pulsed from this loop
 //                            (no audio thread, no device). Scenarios: range
-//                            (phrase bytes 90-FE), clone (Clone onto slots a
-//                            channel and a table still use), view (the
+//                            (phrase bytes 90-FE), clone (upstream: Clone onto
+//                            slots a channel and a table still use; fork: those
+//                            slots emptied by Compact, then cloned into), view (the
 //                            instrument screen's observers across slot
-//                            changes and a Clone; no drawing, no playback),
+//                            changes, a Clone and a Compact; no drawing, no
+//                            playback),
 //                            dlay (DLAY in command column 2 delays by its
-//                            own parameter).
+//                            own parameter), flows (fork: A,A and LT+(B,A) in
+//                            the phrase screen and imports from the sample
+//                            dialog; writes samples into <projdir>, so give
+//                            it a copy).
 //                            Meant for the ASan build (make play)
 //
 // Trace output goes to stderr; results go to stdout.
@@ -60,6 +67,8 @@
 #ifdef SL_FORK
 #include "Application/Instruments/PigtailInstrument.h"
 #include "Application/Views/InstrumentView.h"
+#include "Application/Views/ModalDialogs/ImportSampleDialog.h"
+#include "Application/Views/PhraseView.h"
 #include "UIFramework/Interfaces/I_GUIWindowImp.h"
 #endif
 // TinyXML's Tiny2NosStub.h maps stdio onto the app's FileSystem; the harness
@@ -72,6 +81,7 @@
 #undef fputs
 #undef fread
 #include <limits.h>
+#include <malloc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -146,6 +156,11 @@ static void install() {
 static Project *gProject = 0;
 static bool gLoaded = false;
 static unsigned int gPoolResult = 0;
+// Heap in use (bytes) before the project, after creating it (and the Mixer
+// singleton), after loading
+static size_t gHeap[3];
+
+static size_t heapInUse() { return mallinfo2().uordblks; }
 
 // The steps of AppWindow::LoadProject that touch the model
 static Project *loadProject(const char *dir) {
@@ -155,13 +170,20 @@ static Project *loadProject(const char *dir) {
   Path::SetAlias("project", root.c_str());
   Path::SetAlias("samples", "project:samples");
   gPoolResult = SamplePool::GetInstance()->Load();
+  gHeap[0] = heapInUse();
   Project *project = new Project();
+  // Creating the Mixer earlier would change the save's node order
   Mixer::GetInstance()->Clear();
+  gHeap[1] = heapInUse();
   gLoaded = persist->Load();
+#ifdef SL_FORK
+  if (gLoaded) project->OnLoaded();
+#endif
   if (!gLoaded) project->GetInstrumentBank()->AssignDefaults();
   WatchedVariable::Disable();
   project->GetInstrumentBank()->Init();
   WatchedVariable::Enable();
+  gHeap[2] = heapInUse();
   gProject = project;
   return project;
 }
@@ -184,6 +206,15 @@ static const char *typeName(int t) {
 #endif
   default: return "?";
   }
+}
+
+// Empty slots exist only in the fork; upstream fills every slot
+static bool slotEmpty(InstrumentBank *bank, int i) {
+#ifdef SL_FORK
+  return bank->IsSlotEmpty(i);
+#else
+  return false;
+#endif
 }
 
 // A freshly constructed instrument per type, to spot slots still at defaults
@@ -269,21 +300,26 @@ static void modeDump(const char *dir) {
     }
   }
 
+  // An empty slot (fork) prints as "--", and only if a phrase plays it. A
+  // slot whose variables equal a new instrument's says "defaults"; its
+  // variables are left out if it's also empty (a sampleless Sample) and
+  // no phrase plays it
   printf("slots %02X\n", MAX_INSTRUMENT_COUNT);
   for (int i = 0; i < MAX_INSTRUMENT_COUNT; i++) {
+    if (slotEmpty(bank, i)) {
+      if (rows[i]) printf("I%02X --, %d rows in phrases%s\n", i, rows[i], phrases[i].c_str());
+      continue;
+    }
     I_Instrument *in = bank->GetInstrument(i);
     int t = in->GetType();
     std::vector<std::string> lines = varLines(in);
     bool atDefaults = false;
     I_Instrument *fresh = freshInstrument(t);
     if (fresh) atDefaults = (varLines(fresh) == lines);
-    printf("I%02X %s%s", i, typeName(t), in->IsEmpty() ? " empty" : "");
+    printf("I%02X %s%s%s", i, typeName(t), in->IsEmpty() ? " empty" : "", atDefaults ? ", defaults" : "");
     if (rows[i]) printf(", %d rows in phrases%s", rows[i], phrases[i].c_str());
-    if (in->IsEmpty() && atDefaults && !rows[i]) {
-      printf(", defaults\n");
-      continue;
-    }
     printf("\n");
+    if (in->IsEmpty() && atDefaults && !rows[i]) continue;
     for (size_t k = 0; k < lines.size(); k++) printf("    %s\n", lines[k].c_str());
   }
   for (int b = MAX_INSTRUMENT_COUNT; b < 0xFF; b++) {
@@ -322,6 +358,22 @@ static void modeDump(const char *dir) {
   printf(" lpf");
   for (int i = 0; i < SONG_CHANNEL_COUNT; i++) printf(" %d", mx->GetChannelLPF(i));
   printf("\n");
+}
+
+// ------------------------------------------------------------- mem
+
+static void modeMem(const char *dir) {
+  Project *project = loadProject(dir);
+  InstrumentBank *bank = project->GetInstrumentBank();
+  int filled = 0;
+  for (int i = 0; i < MAX_INSTRUMENT_COUNT; i++) {
+    if (!slotEmpty(bank, i)) filled++;
+  }
+  printf("# slot_lab mem, tree %s\n", SL_TREE);
+  printf("new Project and Mixer: %zu bytes\n", gHeap[1] - gHeap[0]);
+  printf("load and Init: %zu bytes\n", gHeap[2] - gHeap[1]);
+  printf("project after load: %zu bytes, %d of %d slots filled\n", gHeap[2] - gHeap[0], filled,
+         MAX_INSTRUMENT_COUNT);
 }
 
 // ------------------------------------------------------------- xml, lz
@@ -674,16 +726,27 @@ static void printLookups(Project *p) {
 // replays it from rows without an instrument (last instrument, table); channel
 // 1 plays 04 with a looped sample. Then, as the screens would: purge 04's
 // sample (B,A on the sample field), clone 00 and 01 from the phrase screen
-// (LT+B,A). The clones land in 03 and 04, which the player still points at
+// (LT+B,A). Upstream: the clones land in 03 and 04, which the player still
+// points at. Fork: Clone only fills empty slots, so first the phrase rows
+// that name 03 and 04 lose their instrument and Compact empties both slots
+// while the player still points at them; then the clones land there
 static void setupClone(Project *p) {
   InstrumentBank *b = p->GetInstrumentBank();
   Song *s = p->song_;
+#ifdef SL_FORK
+  // up-basic loads 03 and 04 empty
+  if (b->FirstEmpty() != 0x03 || !b->IsSlotEmpty(0x04)) die("clone scenario needs 03 and 04 empty");
+  b->Create(0x03, IT_SAMPLE);
+  b->Create(0x04, IT_SAMPLE);
+#endif
   for (int i = 0; i < 5; i++) {
     I_Instrument *in = b->GetInstrument(i);
     if (in->GetType() != IT_SAMPLE || (in->FindVariable(SIP_SAMPLE)->GetInt() >= 0) != (i < 3))
       die("clone scenario needs samples in 00-02 and none in 03-04");
   }
+#ifndef SL_FORK
   if (b->GetNext() != 0x03) die("clone scenario needs GetNext() == 03");
+#endif
   setVar(b->GetInstrument(0x03), SIP_TABLE, 0x00);
   Table &t0 = TableHolder::GetInstance()->GetTable(0x00);
   for (int r = 0; r < 16; r++) { t0.cmd1_[r] = I_CMD_VOLM; t0.param1_[r] = 0x0080; }
@@ -734,6 +797,17 @@ static void cloneDuringPlay(Project *p) {
   b->GetInstrument(0x04)->Purge();
   ms->Unlock();
   pulse(20);
+#ifdef SL_FORK
+  ms->Lock();
+  p->song_->phrase_->instr_[16 * 0xE0] = 0xFF;
+  p->song_->phrase_->instr_[16 * 0xE1] = 0xFF;
+  p->song_->phrase_->instr_[16 * 0x02] = 0xFF;  // up-basic's own row with 03
+  p->PurgeInstruments(false);
+  ms->Unlock();
+  printf("after Compact: 03 %s, 04 %s\n", b->IsSlotEmpty(0x03) ? "empty" : "FILLED",
+         b->IsSlotEmpty(0x04) ? "empty" : "FILLED");
+  pulse(20);
+#endif
   ms->Lock();
   int c1 = b->Clone(0x00);
   ms->Unlock();
@@ -786,10 +860,11 @@ static void expect(bool ok, const char *what) {
 }
 
 // The instrument screen observes the instrument it shows (sample changes
-// rebuild its fields). Needs up-basic's slots: samples in 00-02, 03 GetNext()
+// rebuild its fields). Needs up-basic's slots: samples in 00-02, 03 the first
+// empty slot, played only by phrase 02 row 0
 static void modeView(Project *p) {
   InstrumentBank *b = p->GetInstrumentBank();
-  if (b->GetNext() != 0x03) die("view scenario needs GetNext() == 03");
+  if (b->FirstEmpty() != 0x03) die("view scenario needs FirstEmpty() == 03");
   LabWindow *win = new LabWindow(*new LabWindowImp());
   ViewData *vd = new ViewData(p);
   InstrumentView *iv = new InstrumentView(*win, vd);
@@ -802,9 +877,9 @@ static void modeView(Project *p) {
   iv->ProcessButtonMask(EPBM_B | EPBM_RIGHT, true);
   iv->ProcessButtonMask(EPBM_B | EPBM_RIGHT, true);
   expect(b->GetInstrument(0x03)->CountObservers() == 1 && b->GetInstrument(0x01)->CountObservers() == 0,
-         "B+RIGHT twice to 03: only 03 observed");
+         "B+RIGHT twice to empty 03: only the stand-in observed");
 
-  // The phrase screen clones 00 onto 03 (GetNext) while this screen shows 03
+  // The phrase screen clones 00 into 03 (FirstEmpty) while this screen shows 03
   I_Instrument *old03 = b->GetInstrument(0x03);
   int c = b->Clone(0x00);
   printf("clone of 00 went to %02X\n", c);
@@ -828,7 +903,126 @@ static void modeView(Project *p) {
   iv->ProcessButtonMask(EPBM_A | EPBM_L, true);
   iv->ProcessButtonMask(EPBM_B | EPBM_LEFT, true);
   printf("buttons on slot FF, then B+LEFT: slot %02X\n", vd->currentInstrument_);
-  expect(b->GetInstrument(0xFF)->CountObservers() == 0, "the stand-in isn't observed after leaving FF");
+  // FE is an empty slot, so the screen still shows the stand-in: once
+  expect(b->GetInstrument(vd->currentInstrument_)->CountObservers() == 1, "the slot it moved to is observed once");
+  iv->ProcessButtonMask(EPBM_B | EPBM_RIGHT, true);  // wraps past FE
+  printf("B+RIGHT: slot %02X\n", vd->currentInstrument_);
+  expect(b->GetInstrument(0xFF)->CountObservers() == 0 && b->GetInstrument(0x00)->CountObservers() == 1,
+         "on 00 the stand-in isn't observed");
+
+  // Compact empties 03 once no phrase plays it, while this screen shows it
+  vd->currentInstrument_ = 0x03;
+  iv->OnFocus();
+  expect(b->GetInstrument(0x03)->CountObservers() == 1, "back on 03: observed");
+  p->song_->phrase_->instr_[16 * 0x02] = 0xFF;
+  p->PurgeInstruments(false);
+  expect(b->IsSlotEmpty(0x03), "Compact emptied 03");
+  iv->ProcessButtonMask(EPBM_A, true);  // no fields left: must not touch them
+  iv->OnFocus();
+  expect(b->GetInstrument(0x03)->CountObservers() == 1, "after OnFocus the stand-in is observed");
+}
+#endif
+
+#ifdef SL_FORK
+// The sample dialog's import, which the dialog runs on A
+class LabImport : public ImportSampleDialog {
+public:
+  LabImport(View &v) : ImportSampleDialog(v) {}
+  void Import(const std::string &file) {
+    Path p(file.c_str());
+    import(p);
+  }
+};
+
+static int filledSlots(InstrumentBank *b) {
+  int n = 0;
+  for (int i = 0; i < MAX_INSTRUMENT_COUNT; i++) n += b->IsSlotEmpty(i) ? 0 : 1;
+  return n;
+}
+
+static std::string sampleName(InstrumentBank *b, int i) {
+  I_Instrument *in = b->GetInstrument(i);
+  if (in->GetType() != IT_SAMPLE) return "(not a Sample)";
+  return in->FindVariable(SIP_SAMPLE)->GetString();
+}
+
+// Phrase screen A,A and LT+(B,A), then sample imports, on up-basic's slots:
+// 00-02, 40, 7F Samples, 80-8F MIDI (80 on channel 9), the rest empty
+static void modeFlows(Project *p, ViewData *vd, const std::string &root) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  Song *s = p->song_;
+  if (b->FirstEmpty() != 0x03 || filledSlots(b) != 21) die("flows scenario needs up-basic's slots");
+  LabWindow *win = new LabWindow(*new LabWindowImp());
+  // ViewData leaves playMode_ uninitialised until something plays, and the
+  // phrase screen reads it on any button but A (design doc, Appendix B)
+  vd->playMode_ = PM_SONG;
+  vd->currentPhrase_ = 0xE0;
+  clearPhrase(s, 0xE0);
+  unsigned char *row = s->phrase_->instr_ + 16 * 0xE0;
+  PhraseView *pv = new PhraseView(*win, vd);
+  pv->ProcessButtonMask(EPBM_RIGHT, true);  // instrument column
+
+  printf("A,A on an empty instrument cell\n");
+  pv->ProcessButtonMask(EPBM_A, true);
+  pv->ProcessButtonMask(EPBM_A, true);
+  printf("  row 0: %02X\n", row[0]);
+  expect(row[0] == 0x03 && b->IsSlotEmpty(0x03), "the lowest empty slot, left empty");
+  Player::GetInstance()->Stop();  // the first A auditions
+
+  printf("LT+(B,A) on a row with MIDI 80\n");
+  pv->ProcessButtonMask(EPBM_DOWN, true);
+  row[1] = 0x80;
+  pv->ProcessButtonMask(EPBM_B | EPBM_L, true);
+  pv->ProcessButtonMask(EPBM_A | EPBM_L, true);
+  printf("  row 1: %02X\n", row[1]);
+  expect(row[1] == 0x03 && b->GetInstrument(0x03)->GetType() == IT_MIDI &&
+             b->GetInstrument(0x03)->FindVariable(MIP_CHANNEL)->GetInt() == 9,
+         "a MIDI clone of 80 (channel 9) in 03");
+
+  printf("LT+(B,A) on a row with empty slot 05\n");
+  pv->ProcessButtonMask(EPBM_DOWN, true);
+  row[2] = 0x05;
+  int before = filledSlots(b);
+  pv->ProcessButtonMask(EPBM_B | EPBM_L, true);
+  pv->ProcessButtonMask(EPBM_A | EPBM_L, true);
+  expect(row[2] == 0x05 && filledSlots(b) == before, "nothing cloned");
+
+  // A sample library under root:, as the dialog lists it
+  Path::SetAlias("root", root.c_str());
+  mkdir((root + "/samplelib").c_str(), 0777);
+  writeWav(root + "/samplelib/x_one.wav", 80);
+  writeWav(root + "/samplelib/y_two.wav", 120);
+  std::string lib = root + "/samplelib/";
+
+  printf("imports, starting from Sample 00\n");
+  vd->currentInstrument_ = 0x00;
+  LabImport *dlg = new LabImport(*pv);
+  dlg->OnFocus();
+  dlg->Import(lib + "x_one.wav");
+  printf("  00: %s\n", sampleName(b, 0x00).c_str());
+  expect(sampleName(b, 0x00) == "x_one.wav", "the first import goes to 00, as before");
+  dlg->Import(lib + "y_two.wav");
+  printf("  04: %s\n", sampleName(b, 0x04).c_str());
+  expect(sampleName(b, 0x04) == "y_two.wav", "the next import creates a Sample in empty 04");
+
+  printf("import while the next slot holds another type\n");
+  b->Create(0x05, IT_PIGTAIL);
+  int pool = SamplePool::GetInstance()->GetNameListSize();
+  dlg->Import(lib + "x_one.wav");
+  expect(b->GetInstrument(0x05)->GetType() == IT_PIGTAIL, "05 keeps its PIGTAIL");
+  expect(SamplePool::GetInstance()->GetNameListSize() == pool + 1, "the sample still went to the pool");
+
+  printf("imports with one empty slot left, then none\n");
+  for (int i = 0; i < MAX_INSTRUMENT_COUNT; i++) {
+    if (b->IsSlotEmpty(i)) b->Create(i, IT_MIDI);
+  }
+  b->Empty(0x05);
+  dlg->Import(lib + "y_two.wav");
+  expect(b->GetInstrument(0x05)->GetType() == IT_SAMPLE, "a Sample in 05, the last empty slot");
+  pool = SamplePool::GetInstance()->GetNameListSize();
+  dlg->Import(lib + "x_one.wav");
+  expect(filledSlots(b) == MAX_INSTRUMENT_COUNT && SamplePool::GetInstance()->GetNameListSize() == pool + 1,
+         "no slot left: the sample only goes to the pool");
 }
 #endif
 
@@ -865,7 +1059,11 @@ static void modeDlay() {
 
 static void modePlay(const char *dir, const char *scenario) {
   std::string sc = scenario;
-  if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay") die("unknown scenario ", scenario);
+  if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay" && sc != "flows")
+    die("unknown scenario ", scenario);
+#ifndef SL_FORK
+  if (sc == "flows") die("flows scenario: fork only");
+#endif
   setvbuf(stdout, 0, _IONBF, 0);  // keep the output if a sanitizer aborts
   gOut = new LabAudioOut();
   Audio::GetInstance()->Insert(gOut);
@@ -890,6 +1088,13 @@ static void modePlay(const char *dir, const char *scenario) {
     modeDlay();
     return;
   }
+#ifdef SL_FORK
+  if (sc == "flows") {
+    modeFlows(project, viewData, absPath(dir));
+    if (gFailed) die("flows scenario: checks failed");
+    return;
+  }
+#endif
   player->OnStartButton(PM_SONG, 0, false, 0);
   if (sc == "range") {
     pulse(3000);
@@ -908,9 +1113,9 @@ static void modePlay(const char *dir, const char *scenario) {
 
 int main(int argc, char **argv) {
   if (argc < 3) {
-    fprintf(stderr, "usage: slot_lab dump <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
+    fprintf(stderr, "usage: slot_lab dump|mem <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
                     "       | gen basic|clones|tables <projdir> | lz <in> <out>\n"
-                    "       | play <projdir> range|clone|view|dlay\n");
+                    "       | play <projdir> range|clone|view|dlay|flows\n");
     return 2;
   }
   std::string mode = argv[1];
@@ -919,6 +1124,7 @@ int main(int argc, char **argv) {
   if (mode == "xml" && argc == 4) { modeXml(argv[2], argv[3]); _exit(0); }
   if (mode == "dump") modeDump(argv[2]);
   else if (mode == "save" && argc == 4) { loadProject(argv[2]); saveProject(argv[3]); }
+  else if (mode == "mem") modeMem(argv[2]);
   else if (mode == "gen" && argc == 4) modeGen(argv[2], argv[3]);
   else if (mode == "play" && argc == 4) modePlay(argv[2], argv[3]);
   else die("bad arguments for mode ", argv[1]);

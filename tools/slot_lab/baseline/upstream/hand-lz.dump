@@ -84,7 +84,7 @@ I02 Sample, 1 rows in phrases 00
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I03 Sample empty, 1 rows in phrases 02
+I03 Sample empty, defaults, 1 rows in phrases 02
     sample=(null) [-1]
     volume=128
     interpol=linear [0]
@@ -259,7 +259,7 @@ I7A Sample empty, defaults
 I7B Sample empty, defaults
 I7C Sample empty, defaults
 I7D Sample empty, defaults
-I7E Sample empty, 1 rows in phrases 02
+I7E Sample empty, defaults, 1 rows in phrases 02
     sample=(null) [-1]
     volume=128
     interpol=linear [0]

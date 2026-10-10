@@ -12,6 +12,11 @@
 #   make check       fork dumps and resaves of every fixture, diffed against
 #                    baseline/$(REF) (default REF=fork; REF=upstream compares
 #                    with upstream's loader). Exits 1 on any difference
+#   make compare     fork dumps and resaves of every fixture against
+#                    upstream's (baseline/upstream), by compare.py: upstream's
+#                    sampleless Samples read as empty slots, top-level node
+#                    order and LAYOUT ignored. Exits 1 on any difference
+#   make mem         heap of each fixture's project in both trees (slot_lab mem)
 #   make baseline    regenerate baseline/<tree>/ for BASELINE_TREES (default
 #                    both) and check that each tree's resave loads back
 #                    to the same dump. baseline/fork is the reference for
@@ -21,7 +26,8 @@
 #   make fixtures    regenerate the generated and hand-made fixtures. Changes
 #                    the inputs: only when a fixture's definition changes
 #   make trees       build both binaries
-#   make play        play scenarios (slot_lab play) on fixtures/up-basic,
+#   make play        play scenarios (slot_lab play) on fixtures/up-basic
+#                    (flows on a copy of it, since it imports samples),
 #                    then a dump of every fixture, under ASan + UBSan: the
 #                    sources in SAN_DIRS rebuilt instrumented, the rest linked
 #                    from the fork's X64 objects. Exits 1 on any sanitizer report
@@ -81,9 +87,9 @@ SAN_DIRS := Application/Instruments Application/Player Application/Mixer Applica
 SAN_SRC   = $(foreach f,$(wildcard $(foreach d,$(SAN_DIRS),$(ROOT)/sources/$(d)/*.cpp)), \
               $(if $(wildcard $(FORK_OBJDIR)/$(notdir $(f:.cpp=.o))),$(f)))
 SAN_SKIP  = LINUXMain.o $(notdir $(SAN_SRC:.cpp=.o))
-PLAY     := range clone view dlay
+PLAY     := range clone view dlay flows
 
-.PHONY: trees check baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean play
+.PHONY: trees check compare mem baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean play
 
 trees: $(addprefix $(BUILD)/slot_lab_,$(TREES))
 
@@ -132,8 +138,10 @@ $(BUILD)/slot_lab_asan: slot_lab.cpp check-objs
 play: $(BUILD)/slot_lab_asan
 	@rm -rf $(BUILD)/play && mkdir -p $(BUILD)/play
 	@status=0; for s in $(PLAY); do \
+	  dir=fixtures/up-basic; \
+	  if [ $$s = flows ]; then dir=$(BUILD)/play/flows-project; cp -r fixtures/up-basic $$dir; fi; \
 	  ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1 \
-	    $(BUILD)/slot_lab_asan play fixtures/up-basic $$s > $(BUILD)/play/$$s.out 2> $(BUILD)/play/$$s.log; \
+	    $(BUILD)/slot_lab_asan play $$dir $$s > $(BUILD)/play/$$s.out 2> $(BUILD)/play/$$s.log; \
 	  rc=$$?; cat $(BUILD)/play/$$s.out; \
 	  if [ $$rc != 0 ] || grep -q "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/$$s.log; then \
 	    echo "play $$s: FAILED (exit $$rc)"; grep -m1 -A12 "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/$$s.log; status=1; \
@@ -186,6 +194,22 @@ check: $(BUILD)/slot_lab_fork
 	  echo "vs $(REF) $$f: $$d, $$r"; \
 	done; \
 	[ $$status = 0 ] || echo "diffs in $(BUILD)/check/*.diff"; exit $$status
+
+compare: $(BUILD)/slot_lab_fork
+	$(call run,fork,$(BUILD)/compare)
+	@status=0; for fp in $(ALL); do f=$${fp%%=*}; \
+	  if python3 -I compare.py dump baseline/upstream/$$f.dump $(BUILD)/compare/$$f.dump > $(BUILD)/compare/$$f.dump.diff; \
+	    then d="dump same"; else d="DUMP DIFFERS"; status=1; fi; \
+	  if python3 -I compare.py xml baseline/upstream/$$f.resave.xml $(BUILD)/compare/$$f.resave.xml > $(BUILD)/compare/$$f.resave.diff; \
+	    then r="resave same"; else r="RESAVE DIFFERS"; status=1; fi; \
+	  echo "vs upstream $$f: $$d, $$r"; \
+	done; \
+	[ $$status = 0 ] || echo "diffs in $(BUILD)/compare/*.diff"; exit $$status
+
+mem: $(addprefix $(BUILD)/slot_lab_,$(TREES))
+	@for t in $(TREES); do for fp in $(ALL); do f=$${fp%%=*}; p=$${fp#*=}; \
+	  printf "%-9s %-34s " $$t $$f; $(BUILD)/slot_lab_$$t mem $$p 2>/dev/null | grep "^project after"; \
+	done; done
 
 # ------------------------------------------------------------- fixtures
 

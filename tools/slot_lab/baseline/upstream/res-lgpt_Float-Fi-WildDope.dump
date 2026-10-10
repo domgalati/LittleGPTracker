@@ -495,7 +495,7 @@ I7F Sample, 1 rows in phrases 80
     print fx=church [3]
     pad with silence=0
     effect amount=45
-I80 Midi
+I80 Midi, defaults
     channel=0
     note length=0
     volume=255

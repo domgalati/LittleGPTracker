@@ -349,7 +349,9 @@ void AppWindow::LoadProject(const Path &p) {
     Mixer::GetInstance()->Clear();
 
     bool succeeded = persist->Load();
-    if (!succeeded) {
+    if (succeeded) {
+        project->OnLoaded();
+    } else {
         project->GetInstrumentBank()->AssignDefaults();
     };
 

@@ -130,11 +130,23 @@ void ImportSampleDialog::import(Path &element) {
 	SamplePool *pool=SamplePool::GetInstance() ;
 	int sampleID=pool->ImportSample(element) ;
 	if (sampleID>=0) {
-		I_Instrument *instr=viewData_->project_->GetInstrumentBank()->GetInstrument(toInstr_) ;
+		// The sample is in the pool now. An empty slot gets a sample
+		// instrument for it; a slot of another type keeps its instrument
+		InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+		if (bank->IsSlotEmpty(toInstr_)) {
+			bank->Create(toInstr_,IT_SAMPLE) ;
+		}
+		I_Instrument *instr=bank->GetInstrument(toInstr_) ;
 		if (instr->GetType()==IT_SAMPLE) {
 			SampleInstrument *sinstr=(SampleInstrument *)instr ;
 			sinstr->AssignSample(sampleID) ;
-			toInstr_=viewData_->project_->GetInstrumentBank()->GetNext() ;
+			toInstr_=bank->FirstEmpty() ;
+		} else {
+			const char *msg=(toInstr_>=MAX_INSTRUMENT_COUNT)
+				?"No empty slot: pool only"
+				:"Not a sample slot: pool only" ;
+			MessageBox *mb=new MessageBox(*this,msg) ;
+			View::DoModal(mb) ;
 		};
 	} else {
         const char *err_str = (sampleID == -SLOAD_ERR_MAX_SAMPLES)

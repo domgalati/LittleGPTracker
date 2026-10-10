@@ -834,7 +834,7 @@ void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
 
             if (col_ < 2) {
                 InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
-                unsigned short next = bank->GetNext();
+                unsigned short next = bank->FirstEmpty();
                 if (next != NO_MORE_INSTRUMENT) {
                     unsigned char *c = phrase_->instr_ +
                                        (16 * viewData_->currentPhrase_ + row_);
@@ -888,6 +888,8 @@ void PhraseView::ProcessButtonMask(unsigned short mask, bool pressed) {
                         *c = (unsigned char)next;
                         lastInstr_ = next;
                         isDirty_ = true;
+                    } else if (bank->IsSlotEmpty(*c)) {
+                        View::SetNotification("Nothing to clone");
                     } else {
                         View::SetNotification("No more instruments");
                     }
