@@ -73,14 +73,12 @@ ALL      := $(foreach f,$(FIXTURES),$(f)=$(CURDIR)/fixtures/$(f)) \
 TREES    := fork upstream
 
 # ASan build for `make play`: sources in SAN_DIRS that the X64 build has an
-# object for are rebuilt instrumented and replace those objects. Two UBSan
-# checks are off because of known reports in code these scenarios don't test
-# (design doc, Appendix B):
-# - signed-integer-overflow: SampleInstrument::Render computes a pointer from
-#   renderParams::feedbackOut_, which stays uninitialised while feedback is off
-# - vptr: InstrumentView treats every field as a UIIntVarField, but the Sample
-#   layout has UIStaticFields too. ASan still catches calls on freed objects
-SAN      := -fsanitize=address,undefined -fno-sanitize=signed-integer-overflow,vptr \
+# object for are rebuilt instrumented and replace those objects. One UBSan
+# check is off because of a known report in code these scenarios don't test
+# (design doc, Appendix B): signed-integer-overflow, since
+# SampleInstrument::Render computes a pointer from renderParams::feedbackOut_,
+# which stays uninitialised while feedback is off
+SAN      := -fsanitize=address,undefined -fno-sanitize=signed-integer-overflow \
             -fno-sanitize-recover=address
 SAN_DIRS := Application/Instruments Application/Player Application/Mixer Application/Views \
             Application/Views/BaseClasses Application/Persistency Foundation Externals/TinyXML

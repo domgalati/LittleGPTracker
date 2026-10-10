@@ -69,6 +69,10 @@ void InstrumentView::onInstrumentChange() {
 	SetFocus(T_SimpleList<UIField>::GetFirst()) ;
 	IteratorPtr<UIField> it2(T_SimpleList<UIField>::GetIterator()) ;
 	for (it2->Begin();!it2->IsDone();it2->Next()) {
+		// Labels are UIStaticFields, not UIIntVarFields, and never focused
+		if (it2->CurrentItem().IsStatic()) {
+			continue ;
+		}
         UIIntVarField &field=(UIIntVarField &)it2->CurrentItem() ;
         if (field.GetVariableID()==lastFocusID_) {
             SetFocus(&field) ;
