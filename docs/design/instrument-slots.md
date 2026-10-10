@@ -251,7 +251,8 @@ Riskiest: stage 4. It is the only step that frees objects the audio path holds r
 - Each part was checked by reverting it alone. Each of the three forget steps gives its own use-after-free: table step, `PlayerChannel::Render`, and `PlayerChannel::StartInstrument` through the last instrument. The view scenario's 11 checks: the old `RemoveObserver` fails 4; without the `IET_DELETED` handling it's a use-after-free in `RemoveObserver`; without the slot check in `Update`, a heap-buffer-overflow in `Observable::NotifyObservers`.
 - `make check`: dumps and resaves unchanged for all 18 fixtures. Clean X64 build: the same 180 warnings as 6cd5351 (only line numbers move). pt_lab `init` and `stress` pass; the binary boots headless.
 - Behaviour now (player side run in the range and clone scenarios; screen text from reading the code): a phrase row with A0-FE stops the channel's note and table and plays nothing, like a sample slot without a sample; the phrase header shows `Ia0: --`. A channel whose last instrument was replaced plays nothing for rows without an instrument number until a row names one (the stand-in, not slot 00). LT+(B,A) on a row with A0-FE shows "No more instruments".
-- Not run: the GUI (the owner's test); the lock against the real SDL audio thread. slot_lab is single-threaded. Button handlers already hold the lock, and `replace()` takes it again.
+- Owner's GUI test (2026-10-09, after a reboot): played a project in song mode, cloned repeatedly during playback, and opened the instrument screen on a slot after cloning onto it. All fine: no crash, the clone showed with working fields.
+- Not run: the lock against the real SDL audio thread under a stress test (slot_lab is single-threaded; the owner's test cloned during real playback). Button handlers already hold the lock, and `replace()` takes it again.
 
 ## 11. Fixtures
 
