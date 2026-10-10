@@ -20,12 +20,11 @@ This fork of djdiskmachine/LittleGPTracker. Remotes: `origin` = domgalati/Little
 ## Adding or changing an instrument type (PIGTAIL commits cb802a4, 1674229)
 1. Enum: add `IT_*` before `IT_LAST` in `sources/Application/Instruments/I_Instrument.h`.
 2. Class: `sources/Application/Instruments/<Name>Instrument.{h,cpp}`, implementing every pure virtual in `I_Instrument`.
-3. Slots: `MAX_*INSTRUMENT_COUNT`, `*_INSTRUMENT_BASE` and `MAX_INSTRUMENT_COUNT` in `sources/Application/Model/Song.h`; allocate them in the `InstrumentBank` constructor. A slot's type is fixed; there's no type picker.
-4. Save/load (`InstrumentBank.cpp`):
-   - Add the type name to `InstrumentTypeData[]` (saved as `TYPE`), and to the `switch` in `RestoreContent` and in `Clone()` (whose `default` creates a MIDI instrument).
-   - Parameters need nothing extra: each inserted `Variable` is saved as `<PARAM NAME=.. VALUE=..>` and restored by its *name*, not its FourCC. The legacy binary loader at `Project.cpp:386` must stay on `LEGACY_INSTRUMENT_COUNT`.
+3. Registry row in `sources/Application/Instruments/InstrumentTypes.cpp` (stage 2 of `docs/design/instrument-slots.md`): the enum value, the save name (saved as `TYPE`), a `create(slot)` factory and the upstream legacy range for entries with no TYPE (`-1,0` for a new type). A compile-time check ties the row count to `IT_LAST`. `InstrumentBank`'s save, load and `Clone()` go through it; there's no per-type code there.
+   - Parameters need nothing extra for save/load: each inserted `Variable` is saved as `<PARAM NAME=.. VALUE=..>` and restored by its *name*, not its FourCC. The legacy binary loader at `Project.cpp:386` must stay on `LEGACY_INSTRUMENT_COUNT`.
+4. Slots: `MAX_*INSTRUMENT_COUNT`, `*_INSTRUMENT_BASE` and `MAX_INSTRUMENT_COUNT` in `sources/Application/Model/Song.h`, plus a row in `defaultLayout` in `InstrumentBank.cpp` (the constructor creates every slot through the factories). A slot's type is fixed; there's no type picker. Stage 3 replaces this with empty slots.
 5. View: add `fill<Name>Parameters()` and a case in the type `switch` of `onInstrumentChange()` (`sources/Application/Views/InstrumentView.{h,cpp}`). B+A clears `SIP_TABLE` on the last field; there's a null guard for instruments without a table.
-6. Build: add `<Name>Instrument.o` to `COMMONFILES` in `projects/Makefile` (line 268).
+6. Build: add `<Name>Instrument.o` to `COMMONFILES` in `projects/Makefile` (line 277).
 - Slot lifetime (stage 1 of `docs/design/instrument-slots.md`):
   - `InstrumentBank::GetInstrument()` never returns null. A number outside the bank (A0-FE) gets the bank's `EmptyInstrument` (header-only; type `IT_LAST`, name `--`, silent, no parameters or table).
   - Delete a slot's instrument only through `InstrumentBank::replace()`. Under the mixer lock it calls `Player::ForgetInstrument` (stops channels playing it, points channels that last played it at the stand-in, stops its tables), notifies observers with `InstrumentEvent` `IET_DELETED`, then deletes it.

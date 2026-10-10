@@ -1,6 +1,6 @@
 # Instrument slots as typed modules: design and plan
 
-Status: approved design; stages 0 and 1 done. Written 2026-10-09 against master `8887975`; every `file:line` below refers to that commit. Read CLAUDE.md first. Work through the stages in section 10 one session at a time, and tick each stage off here when it's committed.
+Status: approved design; stages 0, 1 and 2 done. Written 2026-10-09 against master `8887975`; every `file:line` below refers to that commit. Read CLAUDE.md first. Work through the stages in section 10 one session at a time, and tick each stage off here when it's committed.
 
 ## 1. Goals and non-goals
 
@@ -99,6 +99,8 @@ struct InstrumentTypeInfo {
 Rows: Sample (`"Sample"`, legacy 00-7F), MIDI (`"Midi"`, legacy 80-8F, channel `slot & 0x0F`), PIGTAIL (`"Pigtail"`, no legacy range).
 
 Adding a type later: an enum value in `I_Instrument.h`, the class, one table row, the object in `COMMONFILES` (`projects/Makefile`). With `fields` set, no InstrumentView code is needed. Sample and MIDI keep their existing fill functions, because upstream edits `InstrumentView.cpp` (see section 9). Keep each type's `commands` array in the type's own `.cpp`, next to its `ProcessCommand` switch, so the two don't drift.
+
+As built in stage 2: `InstrumentTypes.{h,cpp}` with `type`, `saveName`, `create` and the legacy range; lookups by type, by save name and by legacy slot. `uiName`, `commands` and `fields` come with the stages that use them (4, 5, 6). `InstrumentView`'s type switch stays until `fields` exists: it dispatches to the fill functions that 5.1 keeps, and putting view callbacks in the registry would make `Instruments/` depend on `Views/`.
 
 ### 5.2 Bank
 
@@ -236,7 +238,7 @@ One stage per session; commit at each working stage (CLAUDE.md workflow rules). 
 |---|---|---|---|
 | [x] | 0 | Tooling: `tools/slot_lab` harness (Appendix A methods): dump slot → type → parameters and the slots phrases reference; load, save, diff. Build upstream/master in a scratch export, with a slot_lab variant linked against upstream's objects. Fixtures in `tools/slot_lab/fixtures/` (section 11) | Baseline dumps of every fixture from upstream's loader |
 | [x] | 1 | Safety only, no behaviour change: bounds-checked `GetInstrument` with the empty stand-in, the replace routine (5.3) used by Clone, the InstrumentView observer fix | ASan run with phrase bytes A0-FE and clone-after-play; fixture dumps unchanged; owner plays a project |
-| [ ] | 2 | Registry refactor, no behaviour change: replace `InstrumentTypeData` and the three type switches and the constructor ranges | Warning-free build; dumps and saved XML byte-identical to stage 1; `pt_lab` ident, init, audit unchanged |
+| [x] | 2 | Registry refactor, no behaviour change: replace `InstrumentTypeData` and the three type switches and the constructor ranges | Warning-free build; dumps and saved XML byte-identical to stage 1; `pt_lab` ident, init, audit unchanged |
 | [ ] | 3 | Empty slots, 00-FE, load/save rules (6.2, 6.3), A,A, Clone, Import, header, Compact, `LoadFirstGen` deleted, pool cap decoupled, pt_lab updated | Every upstream fixture loads to the same dump as upstream's loader, except sampleless unreferenced Sample slots, which are now empty; saving an unchanged fixture reproduces it apart from top-level node order and `LAYOUT="2"`; memory probe; owner loads upstream projects and listens; A,A, clone and import flows |
 | [ ] | 4 | Type field and clear-with-confirmation through 5.3 | ASan stress that clears and changes playing slots, if slot_lab can drive the player headlessly (otherwise an ASan build of the app while the owner changes types during playback); MIDI monitor shows no stuck notes |
 | [ ] | 5 | Command lists in the registry, row resolver, popup dimming, table context | Resolver test cases in slot_lab; owner checks the popup |
@@ -253,6 +255,17 @@ Riskiest: stage 4. It is the only step that frees objects the audio path holds r
 - Behaviour now (player side run in the range and clone scenarios; screen text from reading the code): a phrase row with A0-FE stops the channel's note and table and plays nothing, like a sample slot without a sample; the phrase header shows `Ia0: --`. A channel whose last instrument was replaced plays nothing for rows without an instrument number until a row names one (the stand-in, not slot 00). LT+(B,A) on a row with A0-FE shows "No more instruments".
 - Owner's GUI test (2026-10-09, after a reboot): played a project in song mode, cloned repeatedly during playback, and opened the instrument screen on a slot after cloning onto it. All fine: no crash, the clone showed with working fields.
 - Not run: the lock against the real SDL audio thread under a stress test (slot_lab is single-threaded; the owner's test cloned during real playback). Button handlers already hold the lock, and `replace()` takes it again.
+
+**Stage 2 results** (2026-10-10, branch `feat/slots-stage2` from master `366e11b`):
+- Built: the registry (5.1, as built). `InstrumentBank` takes the saved TYPE, the type created on load (from TYPE, or from the legacy range when there's none) and Clone's factory from it; `InstrumentTypeData` and both bank switches are gone. The constructor fills a `defaultLayout` table (Sample 00-7F, MIDI 80-8F, PIGTAIL 90-9F) through the factories; stage 3 deletes it. MIDI's factory sets channel `slot & 0x0F`, so 80-8F get the same channels as before.
+- Two load differences from stage 1, both only reachable by a hand-edited file (no build writes them). Found by loading one file with slot_lab built against master and against this branch:
+  1. `TYPE="Midi"` outside 80-8F with no `channel` param: channel `slot & 0x0F` instead of 0. That's the decided channel for a new MIDI instrument (section 2). Upstream always writes `channel`.
+  2. An entry with no TYPE in 90-9F used to turn the PIGTAIL slot into MIDI. It's outside every legacy range now, so it's handled like an unknown TYPE: the error "Unknown instrument type '(none)'", the slot keeps its default, params skipped. Fork-era files are a non-goal, and upstream ignores those IDs.
+- Checks, all compared with master `366e11b` built and run the same day:
+  - Clean X64 build: 211 warnings against 214. The 3 gone are the old `char*` type-name table; no new ones. (Stage 1 counted 180 at `6cd5351`; this compares against master, not that number.)
+  - slot_lab `make check`: all 18 fixtures "dump same, resave same", and the dumps and resaves are byte-identical to master's. `make play`: range, clone, view and dlay clean; 18 fixtures load under ASan, with `InstrumentTypes.cpp` instrumented.
+  - pt_lab: `ident` identical for all 48 models; `init` output and `audit.txt` identical to master's; `stress` passes. The binary boots headless.
+- Not run: the GUI. Nothing on screen changed, but load, save and clone (LT+(B,A) in the phrase screen) now create instruments through the registry; the owner's play test covers those.
 
 ## 11. Fixtures
 
