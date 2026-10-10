@@ -1,0 +1,173 @@
+# slot_lab: load/save harness for instrument slots and project files.
+# Not part of the default build. See docs/design/instrument-slots.md.
+#
+# The same slot_lab.cpp is built once per tree, linked against that tree's
+# objects, so each binary uses that tree's own loader and save code:
+#   fork      this repository's projects/buildX64. Build it first:
+#             cd projects && make PLATFORM=X64
+#   upstream  djdiskmachine $(UPSTREAM), exported to build/upstream and built
+#             with its own X64 Makefile (~40 s the first time)
+#   y2014     the 2014 import $(Y2014), stand-in for Mdashdotdashn's 1.3
+#             (same VERSION="1.3", same loader). Model sources only; see y2014.mk
+#
+# From tools/slot_lab:
+#   make check       fork dumps and resaves of every fixture, diffed against
+#                    baseline/$(REF) (default REF=fork; REF=upstream compares
+#                    with upstream's loader). Exits 1 on any difference
+#   make baseline    regenerate baseline/<tree>/ for BASELINE_TREES (default
+#                    all three) and check that each tree's resave loads back
+#                    to the same dump. baseline/fork is the reference for
+#                    stages that must not change behaviour: regenerate it on
+#                    purpose only (make baseline BASELINE_TREES=upstream,
+#                    or make baseline-upstream)
+#   make fixtures    regenerate the generated and hand-made fixtures. Changes
+#                    the inputs: only when a fixture's definition changes
+#   make trees       build the three binaries
+#
+# Per fixture and tree: <name>.dump (slot_lab dump) and <name>.resave.xml
+# (the fixture loaded and saved again by that tree). Dump lines starting
+# with '#' name the tree and are ignored when comparing.
+#
+# Fixtures: fixtures/*/ (see fixtures/README.md), plus every lgpt_* project
+# of djdiskmachine/lgpt-resources in $(RESOURCES) as res-<project>. Clone
+# that outside this repo (design doc section 11):
+#   git clone https://github.com/djdiskmachine/lgpt-resources ~/lgpt-resources
+#   git -C ~/lgpt-resources checkout 9624b43
+# Their dumps are committed; their resaves (the projects themselves, saved
+# again) stay local and untracked.
+
+ROOT     := $(abspath ../..)
+BUILD    := build
+UPSTREAM := c7258ff
+Y2014    := c712f0a
+REF      ?= fork
+BASELINE_TREES ?= upstream y2014 fork
+RESOURCES ?= $(HOME)/lgpt-resources
+RES_PIN  := 9624b43
+SHELL    := /bin/bash
+
+CXX      ?= g++
+DEFINES  := -DPLATFORM_X64 -D_64BIT -DCPP_MEMORY -D__LINUX_ALSA__ -D__LINUX_ALSASEQ__ \
+            -DSDL2 -DSDLAUDIO -DRTMIDI -DFFMPEG_ENABLED -D_FEAT_MIDI_LOCK
+CXXFLAGS := -g -O0 -Wall -std=gnu++03
+LIBS     := $(shell pkg-config alsa --libs) $(shell pkg-config jack --libs 2>/dev/null) \
+            $(shell pkg-config sdl2 --libs) -lpthread
+SDL_INC  := $(shell pkg-config sdl2 --cflags)
+
+FORK_OBJDIR := $(ROOT)/projects/buildX64
+UP_TREE     := $(BUILD)/upstream
+Y14_TREE    := $(BUILD)/y2014
+
+FIXTURES := $(sort $(patsubst fixtures/%/lgptsav.dat,%,$(wildcard fixtures/*/lgptsav.dat)))
+RES_PROJ := $(sort $(patsubst $(RESOURCES)/%/lgptsav.dat,%,$(wildcard $(RESOURCES)/lgpt_*/lgptsav.dat)))
+# name=directory pairs
+ALL      := $(foreach f,$(FIXTURES),$(f)=$(CURDIR)/fixtures/$(f)) \
+            $(foreach p,$(RES_PROJ),res-$(p)=$(RESOURCES)/$(p))
+TREES    := fork upstream y2014
+
+.PHONY: trees check baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean
+
+trees: $(addprefix $(BUILD)/slot_lab_,$(TREES))
+
+# ------------------------------------------------------------- binaries
+
+check-objs:
+	@test -f $(FORK_OBJDIR)/LINUXMain.o || { echo "slot_lab: no X64 objects in $(FORK_OBJDIR); run 'cd projects && make PLATFORM=X64' first"; exit 1; }
+
+$(BUILD)/slot_lab_fork: slot_lab.cpp check-objs
+	@mkdir -p $(BUILD)/fork
+	$(CXX) $(CXXFLAGS) $(DEFINES) $(SDL_INC) -DSL_FORK -DSL_TREE='"fork $(shell git -C $(ROOT) rev-parse --short HEAD)"' \
+	  -I$(ROOT)/sources -c slot_lab.cpp -o $(BUILD)/fork/slot_lab.o
+	$(CXX) $(CXXFLAGS) -w $(DEFINES) -I$(ROOT)/sources -c $(ROOT)/sources/Adapters/Dummy/Midi/DummyMidi.cpp -o $(BUILD)/fork/DummyMidi.o
+	@echo "link $@"
+	@$(CXX) -o $@ $(BUILD)/fork/slot_lab.o $(BUILD)/fork/DummyMidi.o \
+	  $(filter-out $(FORK_OBJDIR)/LINUXMain.o,$(wildcard $(FORK_OBJDIR)/*.o)) $(LIBS)
+
+$(UP_TREE)/.built:
+	rm -rf $(UP_TREE) && mkdir -p $(UP_TREE)
+	git -C $(ROOT) archive $(UPSTREAM) | tar -x -C $(UP_TREE)
+	cd $(UP_TREE)/projects && $(MAKE) PLATFORM=X64 > ../build.log 2>&1 || { tail -20 ../build.log; exit 1; }
+	touch $@
+
+$(BUILD)/slot_lab_upstream: slot_lab.cpp $(UP_TREE)/.built
+	$(CXX) $(CXXFLAGS) $(DEFINES) $(SDL_INC) -DSL_UPSTREAM -DSL_TREE='"upstream $(UPSTREAM)"' \
+	  -I$(UP_TREE)/sources -c slot_lab.cpp -o $(UP_TREE)/slot_lab.o
+	$(CXX) $(CXXFLAGS) -w $(DEFINES) -I$(UP_TREE)/sources -c $(UP_TREE)/sources/Adapters/Dummy/Midi/DummyMidi.cpp -o $(UP_TREE)/DummyMidi.o
+	@echo "link $@"
+	@$(CXX) -o $@ $(UP_TREE)/slot_lab.o $(UP_TREE)/DummyMidi.o \
+	  $(filter-out %/LINUXMain.o,$(wildcard $(UP_TREE)/projects/buildX64/*.o)) $(LIBS)
+
+$(Y14_TREE)/.exported:
+	rm -rf $(Y14_TREE) && mkdir -p $(Y14_TREE)/shim/SDL
+	git -C $(ROOT) archive $(Y2014) sources | tar -x -C $(Y14_TREE)
+	echo '#include <SDL.h>' > $(Y14_TREE)/shim/SDL/SDL.h
+	sed -i 's|^\(\s*\)#error <datatype.h>: \(unsigned \)\?long is out of range!|\1/* slot_lab: removed, see y2014.mk */|' \
+	  $(Y14_TREE)/sources/Externals/Soundfont/DATATYPE.H
+	test $$(grep -c 'slot_lab: removed' $(Y14_TREE)/sources/Externals/Soundfont/DATATYPE.H) = 2
+	touch $@
+
+$(Y14_TREE)/liby2014.a: $(Y14_TREE)/.exported
+	$(MAKE) -f y2014.mk TREE=$(Y14_TREE)
+
+$(BUILD)/slot_lab_y2014: slot_lab.cpp $(Y14_TREE)/liby2014.a
+	$(CXX) $(CXXFLAGS) -fpermissive -Wno-write-strings -DCPP_MEMORY -D_64BIT -DSL_Y2014 -DSL_TREE='"y2014 $(Y2014)"' \
+	  -I$(Y14_TREE)/shim $(SDL_INC) -I$(Y14_TREE)/sources -c slot_lab.cpp -o $(Y14_TREE)/slot_lab.o
+	$(CXX) -o $@ $(Y14_TREE)/slot_lab.o $(Y14_TREE)/liby2014.a $(LIBS)
+
+# ------------------------------------------------------------- runs
+
+# $(call run,tree,outdir): dump and resave every fixture; then dump each
+# resave (next to a link to the fixture's samples) and compare with the
+# first dump, which shows whether the tree's save and load agree
+define run
+	@if [ -z "$(RES_PROJ)" ]; then echo "note: no projects in $(RESOURCES), res-* fixtures skipped"; \
+	elif [ "$$(git -C $(RESOURCES) rev-parse --short=7 HEAD 2>/dev/null)" != $(RES_PIN) ]; then \
+	  echo "warning: $(RESOURCES) isn't at $(RES_PIN)"; fi
+	@rm -rf $(2) && mkdir -p $(2)
+	@for fp in $(ALL); do f=$${fp%%=*}; p=$${fp#*=}; \
+	  $(BUILD)/slot_lab_$(1) dump $$p > $(2)/$$f.dump 2> $(2)/$$f.log || { echo "$(1) $$f: dump failed"; exit 1; }; \
+	  rm -rf $(BUILD)/resave/$(1)/$$f && mkdir -p $(BUILD)/resave/$(1)/$$f; \
+	  ln -s $$p/samples $(BUILD)/resave/$(1)/$$f/samples; \
+	  $(BUILD)/slot_lab_$(1) save $$p $(BUILD)/resave/$(1)/$$f 2>> $(2)/$$f.log || { echo "$(1) $$f: save failed"; exit 1; }; \
+	  cp $(BUILD)/resave/$(1)/$$f/lgptsav.dat $(2)/$$f.resave.xml; \
+	  $(BUILD)/slot_lab_$(1) dump $(BUILD)/resave/$(1)/$$f 2>/dev/null | grep -v '^#' > $(BUILD)/resave/$(1)/$$f.dump; \
+	  if grep -v '^#' $(2)/$$f.dump | cmp -s - $(BUILD)/resave/$(1)/$$f.dump; \
+	    then echo "$(1) $$f: resave loads back the same"; \
+	    else echo "$(1) $$f: RESAVE LOADS BACK DIFFERENTLY"; fi; \
+	done
+endef
+
+baseline: $(addprefix baseline-,$(BASELINE_TREES))
+
+$(addprefix baseline-,$(TREES)): baseline-%: $(BUILD)/slot_lab_%
+	$(call run,$*,baseline/$*)
+	@rm -f baseline/$*/*.log
+
+# A missing baseline file counts as a difference
+check: $(BUILD)/slot_lab_fork
+	$(call run,fork,$(BUILD)/check)
+	@status=0; for fp in $(ALL); do f=$${fp%%=*}; \
+	  if diff -u <(grep -v '^#' baseline/$(REF)/$$f.dump) <(grep -v '^#' $(BUILD)/check/$$f.dump) > $(BUILD)/check/$$f.dump.diff; \
+	    then d="dump same"; else d="DUMP DIFFERS"; status=1; fi; \
+	  if diff -u baseline/$(REF)/$$f.resave.xml $(BUILD)/check/$$f.resave.xml > $(BUILD)/check/$$f.resave.diff; \
+	    then r="resave same"; else r="RESAVE DIFFERS"; status=1; fi; \
+	  echo "vs $(REF) $$f: $$d, $$r"; \
+	done; \
+	[ $$status = 0 ] || echo "diffs in $(BUILD)/check/*.diff"; exit $$status
+
+# ------------------------------------------------------------- fixtures
+
+GEN_UP := basic clones tables
+
+fixtures: $(BUILD)/slot_lab_upstream $(BUILD)/slot_lab_y2014
+	mkdir -p fixtures
+	for n in $(GEN_UP); do rm -rf fixtures/up-$$n; \
+	  $(BUILD)/slot_lab_upstream gen $$n fixtures/up-$$n 2> $(BUILD)/gen-up-$$n.log || { tail $(BUILD)/gen-up-$$n.log; exit 1; }; done
+	rm -rf fixtures/y2014-basic
+	$(BUILD)/slot_lab_y2014 gen basic fixtures/y2014-basic 2> $(BUILD)/gen-y2014-basic.log || { tail $(BUILD)/gen-y2014-basic.log; exit 1; }
+	python3 -I handmade.py fixtures
+	rm -rf fixtures/hand-lz; mkdir -p fixtures/hand-lz; cp -r fixtures/up-basic/samples fixtures/hand-lz/
+	$(BUILD)/slot_lab_upstream lz fixtures/up-basic/lgptsav.dat fixtures/hand-lz/lgptsav.dat
+
+clean:
+	rm -rf $(BUILD)

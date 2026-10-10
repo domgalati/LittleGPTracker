@@ -1,0 +1,7 @@
+build/
+# The root .gitignore ignores *.dat and *.wav; fixtures need theirs
+!fixtures/**/*.dat
+!fixtures/**/*.wav
+# lgpt-resources projects saved again: not committed (design doc section 11)
+baseline/*/res-*.resave.xml
+baseline/y2014/*.resave.xml
