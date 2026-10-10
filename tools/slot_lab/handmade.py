@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Derive slot_lab's hand-made fixtures from fixtures/up-basic.
+"""Derive slot_lab's hand-made fixtures from fixtures/up-basic and owner-midi.
 
-Text edits on upstream's TinyXML output, so each file differs from up-basic
+Text edits on upstream's TinyXML output, so each file differs from its source
 only where fixtures/README.md says. Run through `make fixtures`.
 """
 import os
@@ -18,10 +18,10 @@ def edit(pattern, repl, text, count=1, flags=0):
     return new
 
 
-def write(base, name, text):
+def write(base, name, text, source="up-basic"):
     d = os.path.join(base, name)
     shutil.rmtree(d, ignore_errors=True)
-    shutil.copytree(os.path.join(base, "up-basic", "samples"), os.path.join(d, "samples"))
+    shutil.copytree(os.path.join(base, source, "samples"), os.path.join(d, "samples"))
     with open(os.path.join(d, "lgptsav.dat"), "w", newline="") as f:
         f.write(text)
 
@@ -46,6 +46,8 @@ def main():
     base = sys.argv[1]
     with open(os.path.join(base, "up-basic", "lgptsav.dat"), newline="") as f:
         basic = f.read()
+    with open(os.path.join(base, "owner-midi", "lgptsav.dat"), newline="") as f:
+        midi = f.read()
 
     # Older than 2014: no TYPE, MIDI entries 81-8F missing (85 and 8F are
     # referenced), filter mode saved under its old name
@@ -67,6 +69,13 @@ def main():
     write(base, "hand-missing-sample", edit(
         r'(<INSTRUMENT ID="7F" TYPE="Sample">\s*)<PARAM NAME="sample" VALUE="c_tone.wav" />',
         r'\1<PARAM NAME="sample" VALUE="gone.wav" />', basic))
+
+    # The real MIDI save made to look older than 2014: no TYPE (so the clone
+    # in 00 reads as a Sample entry), and the entry for 83, which phrase 10
+    # plays, removed
+    t = edit(r'(<INSTRUMENT ID="[0-9A-F]{2}") TYPE="Midi"', r"\1", midi, count=17)
+    t = edit(r'\n\s*<INSTRUMENT ID="83">.*?</INSTRUMENT>', "", t, flags=re.S)
+    write(base, "hand-midi-notype", t, source="owner-midi")
 
     # Phrase instrument bytes past upstream's last slot (8F)
     write(base, "hand-phrase90", set_instrument_bytes(basic, {

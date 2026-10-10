@@ -145,6 +145,8 @@ fixtures: $(BUILD)/slot_lab_upstream
 	python3 -I handmade.py fixtures
 	rm -rf fixtures/hand-lz; mkdir -p fixtures/hand-lz; cp -r fixtures/up-basic/samples fixtures/hand-lz/
 	$(BUILD)/slot_lab_upstream lz fixtures/up-basic/lgptsav.dat fixtures/hand-lz/lgptsav.dat
+	rm -rf fixtures/hand-midi-lz; mkdir -p fixtures/hand-midi-lz; cp -r fixtures/owner-midi/samples fixtures/hand-midi-lz/
+	$(BUILD)/slot_lab_upstream lz fixtures/owner-midi/lgptsav.dat fixtures/hand-midi-lz/lgptsav.dat
 
 clean:
 	rm -rf $(BUILD)

@@ -13,6 +13,8 @@ Inputs for `tools/slot_lab` (see its Makefile). Each directory holds an `lgptsav
 | `hand-noversion` | `up-basic` edited | `PROJECT` without `VERSION` | Version 32: table ratio 2, plus the swap |
 | `hand-missing-sample` | `up-basic` edited | Slot 7F names `gone.wav`, which isn't in `samples/` | A sample name the pool doesn't have |
 | `hand-phrase90` | `up-basic` edited | Phrase 02 instrument bytes 90 (row 0), A0 (row 2, no note) and FE (row 8) | Phrase references past upstream's last slot (8F) |
+| `hand-midi-notype` | `owner-midi` edited | No `TYPE` attributes, and the entry for 83 removed although phrase 10 plays it | A real song made to look older than 2014. Upstream reads the clone in 00 as a Sample entry: only `volume` matches a Sample parameter, so it loads as a sampleless Sample with volume 255, and the resave drops it. 83 loads as the default MIDI instrument (channel 3) |
+| `hand-midi-lz` | `slot_lab lz` of `owner-midi` | LZ-compressed save of the real MIDI song | Same as `hand-lz`; loads the same as `owner-midi` |
 | `hand-lz` | `slot_lab lz` of `up-basic` | LZ-compressed save | The loader's decompression path. The layout is a guess (an int holding the length including the NUL, then LZ data): nothing in this repository's history writes compressed saves |
 
 Apart from `owner-midi`, real projects aren't stored here. The Makefile also runs every `lgpt_*` project of [djdiskmachine/lgpt-resources](https://github.com/djdiskmachine/lgpt-resources) at `9624b43` as `res-<project>`, from a clone outside this repository (`RESOURCES`, default `~/lgpt-resources`).
