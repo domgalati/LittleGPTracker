@@ -21,7 +21,7 @@
 #   make fixtures    regenerate the generated and hand-made fixtures. Changes
 #                    the inputs: only when a fixture's definition changes
 #   make trees       build both binaries
-#   make play        playback scenarios (slot_lab play) on fixtures/up-basic
+#   make play        play scenarios (slot_lab play) on fixtures/up-basic
 #                    under ASan + UBSan: the instrument, player and mixer
 #                    sources rebuilt instrumented, the rest linked from the
 #                    fork's X64 objects. Exits 1 on any sanitizer report
@@ -50,7 +50,8 @@ SHELL    := /bin/bash
 CXX      ?= g++
 DEFINES  := -DPLATFORM_X64 -D_64BIT -DCPP_MEMORY -D__LINUX_ALSA__ -D__LINUX_ALSASEQ__ \
             -DSDL2 -DSDLAUDIO -DRTMIDI -DFFMPEG_ENABLED -D_FEAT_MIDI_LOCK
-CXXFLAGS := -g -O0 -Wall -std=gnu++03
+# InstrumentView.h (included for the fork) hides a View overload
+CXXFLAGS := -g -O0 -Wall -Wno-overloaded-virtual -std=gnu++03
 LIBS     := $(shell pkg-config alsa --libs) $(shell pkg-config jack --libs 2>/dev/null) \
             $(shell pkg-config sdl2 --libs) -lpthread
 SDL_INC  := $(shell pkg-config sdl2 --cflags)
@@ -66,16 +67,21 @@ ALL      := $(foreach f,$(FIXTURES),$(f)=$(CURDIR)/fixtures/$(f)) \
 TREES    := fork upstream
 
 # ASan build for `make play`: sources in SAN_DIRS that the X64 build has an
-# object for are rebuilt instrumented and replace those objects. No
-# signed-overflow checks: SampleInstrument::Render computes a pointer from
-# renderParams::feedbackOut_, which stays uninitialised while feedback is off
-SAN      := -fsanitize=address,undefined -fno-sanitize=signed-integer-overflow \
+# object for are rebuilt instrumented and replace those objects. Two UBSan
+# checks are off because of known reports in code these scenarios don't test
+# (design doc, Appendix B):
+# - signed-integer-overflow: SampleInstrument::Render computes a pointer from
+#   renderParams::feedbackOut_, which stays uninitialised while feedback is off
+# - vptr: InstrumentView treats every field as a UIIntVarField, but the Sample
+#   layout has UIStaticFields too. ASan still catches calls on freed objects
+SAN      := -fsanitize=address,undefined -fno-sanitize=signed-integer-overflow,vptr \
             -fno-sanitize-recover=address
-SAN_DIRS := Application/Instruments Application/Player Application/Mixer
+SAN_DIRS := Application/Instruments Application/Player Application/Mixer Application/Views \
+            Application/Views/BaseClasses Foundation
 SAN_SRC   = $(foreach f,$(wildcard $(foreach d,$(SAN_DIRS),$(ROOT)/sources/$(d)/*.cpp)), \
               $(if $(wildcard $(FORK_OBJDIR)/$(notdir $(f:.cpp=.o))),$(f)))
 SAN_SKIP  = LINUXMain.o $(notdir $(SAN_SRC:.cpp=.o))
-PLAY     := range clone
+PLAY     := range clone view
 
 .PHONY: trees check baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean play
 
@@ -112,10 +118,10 @@ $(BUILD)/slot_lab_upstream: slot_lab.cpp $(UP_TREE)/.built
 $(BUILD)/slot_lab_asan: slot_lab.cpp check-objs
 	@rm -rf $(BUILD)/asan && mkdir -p $(BUILD)/asan
 	@echo "compile $(words $(SAN_SRC)) app sources with ASan + UBSan"
-	@cd $(BUILD)/asan && for f in $(SAN_SRC) $(ROOT)/sources/Adapters/Dummy/Midi/DummyMidi.cpp; do \
-	  $(CXX) -g -O1 -w -std=gnu++03 $(SAN) $(DEFINES) $(SDL_INC) -I$(ROOT)/sources \
-	    -I$(ROOT)/sources/Externals/Braids -c $$f -o $$(basename $$f .cpp).o || exit 1; done
-	$(CXX) -g -O1 -Wall -std=gnu++03 $(SAN) $(DEFINES) $(SDL_INC) -DSL_FORK \
+	@cd $(BUILD)/asan && printf '%s\n' $(SAN_SRC) $(ROOT)/sources/Adapters/Dummy/Midi/DummyMidi.cpp | \
+	  xargs -P$(shell nproc) -n1 sh -c '$(CXX) -g -O1 -w -std=gnu++03 $(SAN) $(DEFINES) $(SDL_INC) \
+	    -I$(ROOT)/sources -I$(ROOT)/sources/Externals/Braids -c "$$0" -o "$$(basename "$$0" .cpp).o"'
+	$(CXX) -g -O1 -Wall -Wno-overloaded-virtual -std=gnu++03 $(SAN) $(DEFINES) $(SDL_INC) -DSL_FORK \
 	  -DSL_TREE='"fork $(shell git -C $(ROOT) rev-parse --short HEAD) asan"' \
 	  -I$(ROOT)/sources -c slot_lab.cpp -o $(BUILD)/asan/slot_lab.o
 	@echo "link $@"

@@ -24,8 +24,10 @@
 //                            the real Player and mixer, pulsed from this loop
 //                            (no audio thread, no device). Scenarios: range
 //                            (phrase bytes 90-FE), clone (Clone onto slots a
-//                            channel and a table still use). Meant for the
-//                            ASan build (make play)
+//                            channel and a table still use), view (the
+//                            instrument screen's observers across slot
+//                            changes and a Clone; no drawing, no playback).
+//                            Meant for the ASan build (make play)
 //
 // Trace output goes to stderr; results go to stdout.
 
@@ -55,6 +57,8 @@
 #include "System/System/System.h"
 #ifdef SL_FORK
 #include "Application/Instruments/PigtailInstrument.h"
+#include "Application/Views/InstrumentView.h"
+#include "UIFramework/Interfaces/I_GUIWindowImp.h"
 #endif
 // TinyXML's Tiny2NosStub.h maps stdio onto the app's FileSystem; the harness
 // itself uses plain stdio
@@ -746,13 +750,107 @@ static void cloneDuringPlay(Project *p) {
 #endif
 }
 
+#ifdef SL_FORK
+// A window for a view that is never drawn: View's drawing casts the window
+// to AppWindow, so the view scenario only constructs, focuses and sends
+// buttons. GUIWindow deletes its imp
+class LabWindowImp : public I_GUIWindowImp {
+public:
+  virtual void Clear(GUIColor &, bool) {}
+  virtual void SetColor(GUIColor &) {}
+  virtual void ClearRect(GUIRect &) {}
+  virtual void DrawString(const char *, GUIPoint &, GUITextProperties &, bool) {}
+  virtual void DrawChar(const char, GUIPoint &, GUITextProperties &) {}
+  virtual GUIRect GetRect() { return GUIRect(0, 0, 320, 240); }
+  virtual void Invalidate() {}
+  virtual void Lock() {}
+  virtual void Unlock() {}
+  virtual void Flush() {}
+  virtual void PushEvent(GUIEvent &) {}
+};
+
+class LabWindow : public GUIWindow {
+public:
+  LabWindow(I_GUIWindowImp &imp) : GUIWindow(imp) {}
+  virtual void onUpdate() {}
+  virtual bool onEvent(GUIEvent &) { return false; }
+};
+
+// Declared in Foundation/Observable.h but defined nowhere in the app. If the
+// app ever defines it, this one fails to link and can go
+int Observable::CountObservers() { return (int)_list.size(); }
+
+static int gFailed = 0;
+
+static void expect(bool ok, const char *what) {
+  printf("  %s: %s\n", ok ? "ok" : "FAIL", what);
+  if (!ok) gFailed++;
+}
+
+// The instrument screen observes the instrument it shows (sample changes
+// rebuild its fields). Needs up-basic's slots: samples in 00-02, 03 GetNext()
+static void modeView(Project *p) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  if (b->GetNext() != 0x03) die("view scenario needs GetNext() == 03");
+  LabWindow *win = new LabWindow(*new LabWindowImp());
+  ViewData *vd = new ViewData(p);
+  InstrumentView *iv = new InstrumentView(*win, vd);
+  iv->OnFocus();
+  printf("view on slot 00\n");
+  expect(b->GetInstrument(0x00)->CountObservers() == 1, "00 has the screen as its one observer");
+  iv->ProcessButtonMask(EPBM_B | EPBM_RIGHT, true);  // next slot
+  expect(b->GetInstrument(0x00)->CountObservers() == 0, "B+RIGHT to 01: 00 has no observer left");
+  expect(b->GetInstrument(0x01)->CountObservers() == 1, "01 has one");
+  iv->ProcessButtonMask(EPBM_B | EPBM_RIGHT, true);
+  iv->ProcessButtonMask(EPBM_B | EPBM_RIGHT, true);
+  expect(b->GetInstrument(0x03)->CountObservers() == 1 && b->GetInstrument(0x01)->CountObservers() == 0,
+         "B+RIGHT twice to 03: only 03 observed");
+
+  // The phrase screen clones 00 onto 03 (GetNext) while this screen shows 03
+  I_Instrument *old03 = b->GetInstrument(0x03);
+  int c = b->Clone(0x00);
+  printf("clone of 00 went to %02X\n", c);
+  expect(b->GetInstrument(0x03) != old03, "03 holds a new instrument");
+  iv->OnFocus();  // back to the instrument screen; must not touch the old 03
+  expect(b->GetInstrument(0x03)->CountObservers() == 1, "after OnFocus the new 03 is observed");
+
+  // The phrase screen sets the current slot without switching screens (R+RIGHT
+  // on a row with no instrument and none before it); then 03's sample changes
+  vd->currentInstrument_ = 0xFF;
+  b->GetInstrument(0x03)->FindVariable(SIP_SAMPLE)->SetInt(1);
+  expect(b->GetInstrument(0x03)->CountObservers() == 1, "sample change on 03 while the slot is FF: still observed");
+  iv->OnFocus();
+  expect(b->GetInstrument(0x03)->CountObservers() == 0, "OnFocus on slot FF: 03 no longer observed");
+  expect(b->GetInstrument(0xFF)->CountObservers() == 1, "the stand-in is");
+
+  // Buttons on a screen without fields
+  iv->ProcessButtonMask(EPBM_A, true);
+  iv->ProcessButtonMask(EPBM_B | EPBM_A, true);
+  iv->ProcessButtonMask(EPBM_B | EPBM_L, true);
+  iv->ProcessButtonMask(EPBM_A | EPBM_L, true);
+  iv->ProcessButtonMask(EPBM_B | EPBM_LEFT, true);
+  printf("buttons on slot FF, then B+LEFT: slot %02X\n", vd->currentInstrument_);
+  expect(b->GetInstrument(0xFF)->CountObservers() == 0, "the stand-in isn't observed after leaving FF");
+}
+#endif
+
 static void modePlay(const char *dir, const char *scenario) {
   std::string sc = scenario;
-  if (sc != "range" && sc != "clone") die("unknown scenario ", scenario);
+  if (sc != "range" && sc != "clone" && sc != "view") die("unknown scenario ", scenario);
   setvbuf(stdout, 0, _IONBF, 0);  // keep the output if a sanitizer aborts
   gOut = new LabAudioOut();
   Audio::GetInstance()->Insert(gOut);
   Project *project = loadProject(dir);
+  if (sc == "view") {
+#ifdef SL_FORK
+    printf("# slot_lab play %s, tree %s\n", scenario, SL_TREE);
+    modeView(project);
+    if (gFailed) die("view scenario: checks failed");
+    return;
+#else
+    die("view scenario: fork only");
+#endif
+  }
   if (sc == "range") setupRange(project);
   else setupClone(project);
   ViewData *viewData = new ViewData(project);
@@ -779,7 +877,7 @@ int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: slot_lab dump <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
                     "       | gen basic|clones|tables <projdir> | lz <in> <out>\n"
-                    "       | play <projdir> range|clone\n");
+                    "       | play <projdir> range|clone|view\n");
     return 2;
   }
   std::string mode = argv[1];
