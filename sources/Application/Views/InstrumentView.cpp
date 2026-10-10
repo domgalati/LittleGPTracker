@@ -45,8 +45,8 @@ void InstrumentView::onInstrumentChange() {
 	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
 	current_=bank->GetInstrument(i) ;
 
-	if (current_!=old) {
-		current_->RemoveObserver(*this) ;
+	if ((old)&&(current_!=old)) {
+		old->RemoveObserver(*this) ;
 	} ;
 	T_SimpleList<UIField>::Empty() ;
 
@@ -519,6 +519,23 @@ void InstrumentView::DrawView() {
 
 void InstrumentView::OnFocus() { onInstrumentChange(); }
 
+// Called by the instrument shown, while it walks its observer list, so this
+// must not add or remove observers on it
 void InstrumentView::Update(Observable &o,I_ObservableData *d) {
-	onInstrumentChange() ;
+	if ((d)&&(((InstrumentEvent *)d)->type_==IET_DELETED)) {
+		// The bank is about to delete it: forget it, and the fields that
+		// point at its variables. OnFocus builds the screen again
+		if (&o==current_) {
+			current_=0 ;
+			ClearFocus() ;
+			T_SimpleList<UIField>::Empty() ;
+		}
+		return ;
+	}
+	// If the current slot has changed meanwhile, the screen isn't showing
+	// and OnFocus will switch instruments
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	if (bank->GetInstrument(viewData_->currentInstrument_)==current_) {
+		onInstrumentChange() ;
+	}
 }
