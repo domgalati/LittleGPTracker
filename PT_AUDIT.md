@@ -154,3 +154,21 @@ These show headroom on the desktop only. They say nothing reliable about handhel
 - Driver rates other than 44.1 kHz in the real app (48 kHz was only tested in the harness).
 - The hardcoded 44100 values in the channel HPF and LPF and in `Filters.cpp` are separate from PIGTAIL and still wrong at other driver rates.
   - *Note (2026-10-09): `PlayerChannel.cpp:132` and `:152` hardcode 44100. `Filters.cpp` has no 44100; it hardcodes `1/22050.0f` at line 54, which is the same 44.1 kHz assumption.*
+
+## 11. Re-run (2026-10-09, tools/pt_lab, branch docs/audit-and-cleanup)
+
+The harness was recreated in `tools/pt_lab/` (see CLAUDE.md, "Test tooling") and every mode re-run. It is a reconstruction of the lost `pt_lab`, so agreement with the numbers above confirms both. Conditions as before: x86-64 Linux, default `-g` X64 objects, except that the Braids objects are now compiled with `-fwrapv`. Sections 1-10 are left as recorded.
+
+| Mode | Command | Time | Result | vs the earlier record |
+|---|---|---|---|---|
+| Bit identity | `make ident` | 2.5 s | 96 kHz output identical to f43d554 for all 48 models (both builds with `-fwrapv`) | same |
+| Init | `make init` | 1.6 s | 0 of 48 models silent | same |
+| Rate audit | `make audit` | 8.5 s | 20 of 96 model/setting rows flagged OFF; every row's numbers identical to the earlier 5-seed audit (e.g. BLOWN -11.2/-31.3 st, PLUCK +13.6 +- 8.4 st, SNARE +8.5/+3.7 st, VOWEL_FOF band distance 4.4/5.4 dB) | same |
+| Stress (ASan+UBSan) | `make stress` | 7.9 s | no ASan errors, no hang; 288 held-note shape changes (211,906 samples, max 12,104), 5,242 random changes over 60 s on 8 channels (max 16,166); unknown name loads as `csaw`; indices 999/-5 safe | same counts |
+| Stress, no `-fwrapv` | `make stress BRAIDS_WRAPV=` | ~8 s | 83 UBSan signed-overflow reports: `stmlib/utils/dsp.h` 75 (lines 110 x42, 154 x30, 97 x2, 128 x1), `digital_oscillator.cpp` 7 (lines 221, 273, 274, 277, 444, 2268, 2500), `svf.h:99` 1 | same total; section 7 named only dsp.h:110 in that file |
+| Stress, with `-fwrapv` | `make stress` | 7.9 s | 0 UBSan reports (with `-fwrapv`, signed overflow is defined, so UBSan doesn't check it) | new |
+| CPU | `make cpu` | 2.1 s | 0.05-0.23% per voice; heaviest FOLD 0.23%, HARMONIC 0.19%, CYMBAL/WMAP/BELL 0.18%, WLINE 0.17%; lightest CLK NOISE 0.05% | same |
+| Tuning | `make tune` | 138 s | 2,730 clean cells: median 0.18 c, p95 3.79 c, 58 cells >5 c (same octave), 48 octave flips | same totals |
+
+Tuning table differences from section 4, all 0.1 cent: sine x3 C1 1.0 (was 1.1), swarm C2 6.4 (6.5), toy C5 0.3 (0.2), zpkf C5 0.3 (0.2), zhpf C5 0.3 (0.2). Every other cell is the same. SAW COMB at C5 is 136.7 cents again; it is still unexplained and still needs a check by ear or with a tuner.
+
