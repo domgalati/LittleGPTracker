@@ -44,8 +44,11 @@
 //                            design doc 8.2: which slot a phrase row's
 //                            commands go to, the table screen's slot as the
 //                            phrase and mixer screens leave it, and which
-//                            commands each type and location dims). Meant
-//                            for the ASan build (make play)
+//                            commands each type and location dims), fields
+//                            (fork: every registry layout of an instrument
+//                            screen against its type's variables, and the
+//                            screen built from it). Meant for the ASan build
+//                            (make play)
 //
 // Trace output goes to stderr; results go to stdout.
 
@@ -54,6 +57,7 @@
 #include "Adapters/Unix/Process/UnixProcess.h"
 #include "Application/Instruments/CommandList.h"
 #include "Application/Instruments/InstrumentBank.h"
+#include "Application/Instruments/InstrumentTypes.h"
 #include "Application/Instruments/MidiInstrument.h"
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
@@ -1522,6 +1526,129 @@ static void modeResolve(Project *p, ViewData *vd) {
 }
 #endif
 
+#ifdef SL_FORK
+// ------------------------------------------------------------- fields
+
+// The instrument screen, with the anchor a registry layout is placed from
+class LabInstrumentView : public InstrumentView {
+public:
+  LabInstrumentView(GUIWindow &w, ViewData *vd) : InstrumentView(w, vd) {}
+  GUIPoint Anchor() { return GetAnchor(); }
+};
+
+static std::string fourCCText(FourCC c) {
+  char name[5];
+  fourCC2char(c, name);
+  name[4] = 0;
+  return name;
+}
+
+// What's wrong with one layout row for instrument `in`, or ""
+static std::string rowProblem(I_Instrument *in, const InstrumentField *f, std::vector<FourCC> &seen) {
+  Variable *v = in->FindVariable(f->variable);
+  if (!v) return "not a variable of the type";
+  if (std::find(seen.begin(), seen.end(), f->variable) != seen.end()) return "a second row for it";
+  seen.push_back(f->variable);
+  bool list = (v->GetType() == Variable::CHAR_LIST) || (v->GetType() == Variable::BOOL);
+  if ((strstr(f->format, "%s") != 0) != list) return "format doesn't fit the variable's type";
+  if ((f->max < 0) && (v->GetType() != Variable::CHAR_LIST)) return "max -1 on a variable that isn't a list";
+  int max = (f->max < 0) ? v->GetListSize() - 1 : f->max;
+  if (f->min > max) return "min above max";
+  if ((f->fine <= 0) || (f->coarse <= 0)) return "a step isn't positive";
+  return "";
+}
+
+// One A+arrow on the focused field, from `from`; true if it lands on `want`
+static bool stepsTo(InstrumentView *iv, Variable *v, int from, unsigned short arrow, int want) {
+  v->SetInt(from);
+  press(iv, EPBM_A, arrow);
+  return v->GetInt() == want;
+}
+
+// Every registry layout (InstrumentTypeInfo::fields) against a new instrument
+// of its type, then the instrument screen built from it in up-basic's empty
+// slot 03: the fields, their places and their steps. No playback
+static void modeFields(Project *p, ViewData *vd) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  if (!b->IsSlotEmpty(0x03)) die("fields scenario needs an empty slot 03");
+  LabWindow *win = new LabWindow(*new LabWindowImp());
+  vd->currentInstrument_ = 0x03;
+  LabInstrumentView *iv = new LabInstrumentView(*win, vd);
+  int layouts = 0;
+  for (int k = 0; k < InstrumentTypes::Count(); k++) {
+    const InstrumentTypeInfo *info = InstrumentTypes::At(k);
+    if (!info->fields) {
+      printf("%s: no layout, InstrumentView fills its screen\n", info->uiName);
+      continue;
+    }
+    layouts++;
+    printf("%s layout\n", info->uiName);
+    I_Instrument *in = info->create(0x03);
+    std::vector<FourCC> seen;
+    int rows = 0;
+    for (const InstrumentField *f = info->fields; f->variable; f++, rows++) {
+      std::string problem = rowProblem(in, f, seen);
+      char line[200];
+      snprintf(line, sizeof(line), "row %d, %s at %d,%d: %s", rows, fourCCText(f->variable).c_str(), f->x, f->y,
+               problem.empty() ? "a variable of the type" : problem.c_str());
+      expect(problem.empty(), line);
+    }
+    int variables = 0;
+    IteratorPtr<Variable> vit(in->GetIterator());
+    for (vit->Begin(); !vit->IsDone(); vit->Next()) variables++;
+    char line[200];
+    snprintf(line, sizeof(line), "%d rows for its %d variables", rows, variables);
+    expect(rows == variables, line);
+    delete in;
+
+    // The screen: one field per row in row order, then the type field on
+    // the row above the anchor
+    in = b->Create(0x03, info->type);
+    iv->OnFocus();
+    GUIPoint a = iv->Anchor();
+    IteratorPtr<UIField> it(iv->T_SimpleList<UIField>::GetIterator());
+    const InstrumentField *f = info->fields;
+    int n = 0;
+    bool placed = true;
+    for (it->Begin(); !it->IsDone(); it->Next(), n++) {
+      UIField &field = it->CurrentItem();
+      if (field.IsStatic()) {
+        placed = false;
+        continue;
+      }
+      FourCC id = ((UIIntVarField &)field).GetVariableID();
+      GUIPoint pos = field.GetPosition();
+      if (f->variable) {
+        placed = placed && (id == f->variable) && (pos._x == a._x + f->x) && (pos._y == a._y + f->y);
+        f++;
+      } else {
+        placed = placed && (id == IVF_TYPE) && (pos._x == a._x) && (pos._y == a._y - 1);
+      }
+    }
+    snprintf(line, sizeof(line), "screen: %d fields, each at its row's place, then the type field", n);
+    expect(placed && (n == rows + 1), line);
+
+    // Each field's steps and limits, through A+arrows on the screen
+    it->Begin();
+    for (f = info->fields; placed && (n == rows + 1) && f->variable; f++, it->Next()) {
+      Variable *v = in->FindVariable(f->variable);
+      int max = (f->max < 0) ? v->GetListSize() - 1 : f->max;
+      iv->SetFocus(&it->CurrentItem());
+      bool ok = stepsTo(iv, v, f->min, EPBM_LEFT, f->min) && stepsTo(iv, v, f->min, EPBM_RIGHT, f->min + f->fine) &&
+                stepsTo(iv, v, f->min, EPBM_UP, std::min(f->min + f->coarse, max)) &&
+                stepsTo(iv, v, max, EPBM_RIGHT, max) && stepsTo(iv, v, max, EPBM_DOWN, std::max(max - f->coarse, f->min));
+      snprintf(line, sizeof(line), "%s: %d-%d, steps %d and %d", fourCCText(f->variable).c_str(), f->min, max,
+               f->fine, f->coarse);
+      expect(ok, line);
+    }
+    b->Empty(0x03);
+  }
+  expect(layouts > 0, "at least one type has a layout");
+  iv->OnFocus();
+  expect(b->GetInstrument(0x03)->CountObservers() == 1, "back on the empty slot: the stand-in is observed");
+}
+#endif
+
 // Channel 0 plays one note with a column 1 command whose parameter has low
 // nibble 0, and DLAY dd in command column 2. Returns the pulse at which the
 // note starts
@@ -1556,10 +1683,11 @@ static void modeDlay() {
 static void modePlay(const char *dir, const char *scenario) {
   std::string sc = scenario;
   if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay" && sc != "flows" && sc != "types" &&
-      sc != "resolve")
+      sc != "resolve" && sc != "fields")
     die("unknown scenario ", scenario);
 #ifndef SL_FORK
-  if (sc == "flows" || sc == "types" || sc == "resolve") die("flows, types and resolve scenarios: fork only");
+  if (sc == "flows" || sc == "types" || sc == "resolve" || sc == "fields")
+    die("flows, types, resolve and fields scenarios: fork only");
 #else
   if (sc == "types") {
     // Before the project exists: MidiInstrument keeps the first service it sees
@@ -1608,6 +1736,11 @@ static void modePlay(const char *dir, const char *scenario) {
     if (gFailed) die("resolve scenario: checks failed");
     return;
   }
+  if (sc == "fields") {
+    modeFields(project, viewData);
+    if (gFailed) die("fields scenario: checks failed");
+    return;
+  }
 #endif
   player->OnStartButton(PM_SONG, 0, false, 0);
   if (sc == "range") {
@@ -1629,7 +1762,7 @@ int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: slot_lab dump|mem <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
                     "       | gen basic|clones|tables <projdir> | lz <in> <out>\n"
-                    "       | play <projdir> range|clone|view|dlay|flows|types|resolve\n");
+                    "       | play <projdir> range|clone|view|dlay|flows|types|resolve|fields\n");
     return 2;
   }
   std::string mode = argv[1];

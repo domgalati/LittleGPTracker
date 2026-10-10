@@ -23,11 +23,11 @@ static I_Instrument *createPigtail(int) {
 // Save names must stay stable: they're the TYPE attribute in project files
 static const InstrumentTypeInfo types[]= {
 	{IT_SAMPLE,"Sample","SAMPLE",createSample,0x00,0x80,
-		SampleInstrument::Commands,0},
+		SampleInstrument::Commands,0,0},
 	{IT_MIDI,"Midi","MIDI",createMidi,0x80,0x10,
-		MidiInstrument::Commands,MidiInstrument::Help},
+		MidiInstrument::Commands,MidiInstrument::Help,0},
 	{IT_PIGTAIL,"Pigtail","PIGTAIL",createPigtail,-1,0,
-		PigtailInstrument::Commands,0}
+		PigtailInstrument::Commands,0,PigtailInstrument::Fields}
 } ;
 
 #define INSTRUMENT_TYPE_COUNT (int(sizeof(types)/sizeof(types[0])))

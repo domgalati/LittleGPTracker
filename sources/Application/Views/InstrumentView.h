@@ -2,6 +2,7 @@
 #define _INSTRUMENT_VIEW_H_
 
 #include "Application/FX/FxPrinter.h"
+#include "Application/Instruments/InstrumentTypes.h"
 #include "BaseClasses/FieldView.h"
 #include "Foundation/Observable.h"
 #include "Foundation/Variables/Variable.h"
@@ -29,7 +30,7 @@ protected:
 	void onInstrumentChange() ;
 	void fillSampleParameters() ;
 	void fillMidiParameters() ;
-	void fillPigtailParameters() ;
+	void fillFields(const InstrumentField *fields) ;
 	void fillTypeField() ;
 	void stepType(int offset) ;
 	void askClearSlot() ;

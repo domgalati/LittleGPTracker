@@ -128,6 +128,15 @@ PigtailInstrument::PigtailInstrument() {
 PigtailInstrument::~PigtailInstrument() {
 } ;
 
+// The instrument screen: one field per variable above
+const InstrumentField PigtailInstrument::Fields[]={
+	{PTIP_SHAPE,0,0,"shape: %s",0,-1,1,1},
+	{PTIP_TIMBRE,0,1,"timbre: %2.2X",0,0xFF,1,0x10},
+	{PTIP_COLOR,0,2,"color: %2.2X",0,0xFF,1,0x10},
+	{PTIP_VOLUME,0,4,"volume: %d [%2.2X]",0,255,1,10},
+	{0,0,0,0,0,0,0,0}
+} ;
+
 bool PigtailInstrument::Init() {
 	tableState_.Reset() ;
 	return true ;

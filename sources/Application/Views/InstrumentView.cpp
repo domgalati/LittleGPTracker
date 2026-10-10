@@ -1,7 +1,6 @@
 #include "InstrumentView.h"
 #include "Application/Instruments/InstrumentTypes.h"
 #include "Application/Instruments/MidiInstrument.h"
-#include "Application/Instruments/PigtailInstrument.h"
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
 #include "Application/Model/Config.h"
@@ -65,16 +64,17 @@ void InstrumentView::onInstrumentChange() {
 	T_SimpleList<UIField>::Empty() ;
 
 	InstrumentType it=getInstrumentType() ;
+	const InstrumentTypeInfo *info=InstrumentTypes::Get(it) ;
 
-    switch (it) {
+	// A type with a layout in the registry needs no code here
+	if ((info)&&(info->fields)) {
+		fillFields(info->fields) ;
+	} else switch (it) {
 		case IT_MIDI:
 			fillMidiParameters() ;
 			break ;
 		case IT_SAMPLE:
 			fillSampleParameters() ;
-			break ;
-		case IT_PIGTAIL:
-			fillPigtailParameters() ;
 			break ;
 		default:
 			break ;
@@ -295,32 +295,28 @@ void InstrumentView::fillMidiParameters() {
 
 } ;
 
-void InstrumentView::fillPigtailParameters() {
+// The layout a type gives in the registry (InstrumentTypeInfo::fields)
+void InstrumentView::fillFields(const InstrumentField *fields) {
 
 	int i=viewData_->currentInstrument_ ;
 	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
 	I_Instrument *instr=bank->GetInstrument(i) ;
-	GUIPoint position=GetAnchor() ;
+	GUIPoint anchor=GetAnchor() ;
 
-	Variable *v=instr->FindVariable(PTIP_SHAPE) ;
-	UIIntVarField *f1=new UIIntVarField(position,*v,"shape: %s",0,v->GetListSize()-1,1,1) ;
-	T_SimpleList<UIField>::Insert(f1) ;
-	f1->SetFocus() ;
-
-	position._y+=1 ;
-	v=instr->FindVariable(PTIP_TIMBRE) ;
-	f1=new UIIntVarField(position,*v,"timbre: %2.2X",0,0xFF,1,0x10) ;
-	T_SimpleList<UIField>::Insert(f1) ;
-
-	position._y+=1 ;
-	v=instr->FindVariable(PTIP_COLOR) ;
-	f1=new UIIntVarField(position,*v,"color: %2.2X",0,0xFF,1,0x10) ;
-	T_SimpleList<UIField>::Insert(f1) ;
-
-	position._y+=2 ;
-	v=instr->FindVariable(PTIP_VOLUME) ;
-	f1=new UIIntVarField(position,*v,"volume: %d [%2.2X]",0,255,1,10) ;
-	T_SimpleList<UIField>::Insert(f1) ;
+	for (const InstrumentField *f=fields;f->variable;f++) {
+		// A row naming a variable the type doesn't have is skipped (slot_lab's
+		// fields scenario checks every layout)
+		Variable *v=instr->FindVariable(f->variable) ;
+		if (!v) {
+			continue ;
+		}
+		GUIPoint position=anchor ;
+		position._x+=f->x ;
+		position._y+=f->y ;
+		int max=(f->max<0)?v->GetListSize()-1:f->max ;
+		UIIntVarField *field=new UIIntVarField(position,*v,f->format,f->min,max,f->fine,f->coarse) ;
+		T_SimpleList<UIField>::Insert(field) ;
+	}
 } ;
 
 // On the row above the parameters. The slot's type is shown, not edited:

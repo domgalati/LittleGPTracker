@@ -2,6 +2,7 @@
 #define _PIGTAIL_INSTRUMENT_H_
 
 #include "I_Instrument.h"
+#include "InstrumentTypes.h"
 #include "Application/Model/Song.h"
 
 #define PTIP_VOLUME MAKE_FOURCC('V','O','L','M')
@@ -33,6 +34,8 @@ public:
 	virtual void ProcessCommand(int channel,FourCC cc,ushort value) ;
 	// The commands ProcessCommand acts on (instrument type registry)
 	static const FourCC Commands[] ;
+	// Its instrument screen (instrument type registry)
+	static const InstrumentField Fields[] ;
 
 	virtual bool IsInitialized() { return true ; } ;
 

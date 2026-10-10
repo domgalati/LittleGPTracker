@@ -89,7 +89,7 @@ SAN_DIRS := Application/Instruments Application/Player Application/Mixer Applica
 SAN_SRC   = $(foreach f,$(wildcard $(foreach d,$(SAN_DIRS),$(ROOT)/sources/$(d)/*.cpp)), \
               $(if $(wildcard $(FORK_OBJDIR)/$(notdir $(f:.cpp=.o))),$(f)))
 SAN_SKIP  = LINUXMain.o $(notdir $(SAN_SRC:.cpp=.o))
-PLAY     := range clone view dlay flows types resolve
+PLAY     := range clone view dlay flows types resolve fields
 
 .PHONY: trees check compare mem baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean play cmdlists
 
