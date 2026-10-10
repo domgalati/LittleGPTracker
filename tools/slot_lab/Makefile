@@ -21,6 +21,10 @@
 #   make fixtures    regenerate the generated and hand-made fixtures. Changes
 #                    the inputs: only when a fixture's definition changes
 #   make trees       build both binaries
+#   make play        playback scenarios (slot_lab play) on fixtures/up-basic
+#                    under ASan + UBSan: the instrument, player and mixer
+#                    sources rebuilt instrumented, the rest linked from the
+#                    fork's X64 objects. Exits 1 on any sanitizer report
 #
 # Per fixture and tree: <name>.dump (slot_lab dump) and <name>.resave.xml
 # (the fixture loaded and saved again by that tree). Dump lines starting
@@ -61,7 +65,19 @@ ALL      := $(foreach f,$(FIXTURES),$(f)=$(CURDIR)/fixtures/$(f)) \
             $(foreach p,$(RES_PROJ),res-$(p)=$(RESOURCES)/$(p))
 TREES    := fork upstream
 
-.PHONY: trees check baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean
+# ASan build for `make play`: sources in SAN_DIRS that the X64 build has an
+# object for are rebuilt instrumented and replace those objects. No
+# signed-overflow checks: SampleInstrument::Render computes a pointer from
+# renderParams::feedbackOut_, which stays uninitialised while feedback is off
+SAN      := -fsanitize=address,undefined -fno-sanitize=signed-integer-overflow \
+            -fno-sanitize-recover=address
+SAN_DIRS := Application/Instruments Application/Player Application/Mixer
+SAN_SRC   = $(foreach f,$(wildcard $(foreach d,$(SAN_DIRS),$(ROOT)/sources/$(d)/*.cpp)), \
+              $(if $(wildcard $(FORK_OBJDIR)/$(notdir $(f:.cpp=.o))),$(f)))
+SAN_SKIP  = LINUXMain.o $(notdir $(SAN_SRC:.cpp=.o))
+PLAY     := range clone
+
+.PHONY: trees check baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean play
 
 trees: $(addprefix $(BUILD)/slot_lab_,$(TREES))
 
@@ -92,6 +108,31 @@ $(BUILD)/slot_lab_upstream: slot_lab.cpp $(UP_TREE)/.built
 	@echo "link $@"
 	@$(CXX) -o $@ $(UP_TREE)/slot_lab.o $(UP_TREE)/DummyMidi.o \
 	  $(filter-out %/LINUXMain.o,$(wildcard $(UP_TREE)/projects/buildX64/*.o)) $(LIBS)
+
+$(BUILD)/slot_lab_asan: slot_lab.cpp check-objs
+	@rm -rf $(BUILD)/asan && mkdir -p $(BUILD)/asan
+	@echo "compile $(words $(SAN_SRC)) app sources with ASan + UBSan"
+	@cd $(BUILD)/asan && for f in $(SAN_SRC) $(ROOT)/sources/Adapters/Dummy/Midi/DummyMidi.cpp; do \
+	  $(CXX) -g -O1 -w -std=gnu++03 $(SAN) $(DEFINES) $(SDL_INC) -I$(ROOT)/sources \
+	    -I$(ROOT)/sources/Externals/Braids -c $$f -o $$(basename $$f .cpp).o || exit 1; done
+	$(CXX) -g -O1 -Wall -std=gnu++03 $(SAN) $(DEFINES) $(SDL_INC) -DSL_FORK \
+	  -DSL_TREE='"fork $(shell git -C $(ROOT) rev-parse --short HEAD) asan"' \
+	  -I$(ROOT)/sources -c slot_lab.cpp -o $(BUILD)/asan/slot_lab.o
+	@echo "link $@"
+	@$(CXX) $(SAN) -o $@ $(BUILD)/asan/*.o \
+	  $(filter-out $(addprefix $(FORK_OBJDIR)/,$(SAN_SKIP)),$(wildcard $(FORK_OBJDIR)/*.o)) $(LIBS)
+
+# Output in $(BUILD)/play/<scenario>.out, trace and sanitizer output in .log
+play: $(BUILD)/slot_lab_asan
+	@rm -rf $(BUILD)/play && mkdir -p $(BUILD)/play
+	@status=0; for s in $(PLAY); do \
+	  ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1 \
+	    $(BUILD)/slot_lab_asan play fixtures/up-basic $$s > $(BUILD)/play/$$s.out 2> $(BUILD)/play/$$s.log; \
+	  rc=$$?; cat $(BUILD)/play/$$s.out; \
+	  if [ $$rc != 0 ] || grep -q "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/$$s.log; then \
+	    echo "play $$s: FAILED (exit $$rc)"; grep -m1 -A12 "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/$$s.log; status=1; \
+	  else echo "play $$s: no sanitizer reports"; fi; \
+	done; exit $$status
 
 # ------------------------------------------------------------- runs
 

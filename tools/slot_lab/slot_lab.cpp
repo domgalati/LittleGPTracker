@@ -19,6 +19,13 @@
 //                            the tree's model code, write its samples and save
 //   lz <in> <out>            LZ-compress a save file in the layout the loader
 //                            expects (int length, then LZ data)
+//   play <projdir> <scenario>
+//                            load, edit the song in memory and play it through
+//                            the real Player and mixer, pulsed from this loop
+//                            (no audio thread, no device). Scenarios: range
+//                            (phrase bytes 90-FE), clone (Clone onto slots a
+//                            channel and a table still use). Meant for the
+//                            ASan build (make play)
 //
 // Trace output goes to stderr; results go to stdout.
 
@@ -30,16 +37,20 @@
 #include "Application/Instruments/MidiInstrument.h"
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
+#include "Application/Mixer/MixerService.h"
 #include "Application/Model/Groove.h"
 #include "Application/Model/Mixer.h"
 #include "Application/Model/Project.h"
 #include "Application/Model/Table.h"
 #include "Application/Persistency/PersistencyService.h"
+#include "Application/Player/Player.h"
 #include "Application/Player/SyncMaster.h"
 #include "Application/Player/TablePlayback.h"
+#include "Application/Views/ViewData.h"
 #include "Externals/Compression/lz.h"
 #include "Foundation/Variables/WatchedVariable.h"
 #include "Services/Audio/Audio.h"
+#include "Services/Audio/AudioDriver.h"
 #include "System/Console/Trace.h"
 #include "System/System/System.h"
 #ifdef SL_FORK
@@ -61,6 +72,7 @@
 #include <sys/stat.h>
 #include <sys/time.h>
 #include <unistd.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -539,12 +551,212 @@ static void modeGen(const char *name, const char *dir) {
   saveProject(dir);
 }
 
+// ------------------------------------------------------------- play
+
+// Audio output for the play mode. MixerService picks it up as the first output
+// of the installed Audio; Pulse() does what a driver's buffer request does
+// (MixerService::Update: player tick, then Trigger renders), from our loop
+class LabAudioOut : public AudioOut {
+public:
+  LabAudioOut() : buffer_(0), buffers_(0), audible_(0) {}
+  virtual bool Init() {
+    buffer_ = (fixed *)malloc(MIX_BUFFER_SIZE * sizeof(fixed));
+    return buffer_ != 0;
+  }
+  virtual void Close() { free(buffer_); buffer_ = 0; }
+  virtual bool Start() { return true; }
+  virtual void Stop() {}
+  virtual void SetMasterVolume(int) {}
+  virtual void Trigger() {
+    int n = getPlaySampleCount();
+    if (2 * n > MIX_BUFFER_SIZE) die("buffer request too large");
+    buffers_++;
+    if (!AudioMixer::Render(buffer_, n)) return;
+    for (int i = 0; i < 2 * n; i++) {
+      if (buffer_[i]) { audible_++; break; }
+    }
+  }
+  virtual int GetPlayedBufferPercentage() { return 0; }
+  virtual std::string GetAudioAPI() { return "slot_lab"; }
+  virtual std::string GetAudioDevice() { return "pulse"; }
+  virtual int GetAudioBufferSize() { return 0; }
+  virtual int GetAudioRequestedBufferSize() { return 0; }
+  virtual int GetAudioPreBufferCount() { return 0; }
+  virtual double GetStreamTime() { return 0; }
+  void Pulse() {
+    SetChanged();
+    AudioDriver::Event e(AudioDriver::Event::ADET_BUFFERNEEDED);
+    NotifyObservers(&e);
+  }
+  fixed *buffer_;
+  int buffers_, audible_;
+};
+
+static LabAudioOut *gOut = 0;
+// Instrument bytes the player showed per channel while a note was on
+static std::vector<std::string> gPlayed[SONG_CHANNEL_COUNT];
+
+static void pulse(int count) {
+  Player *player = Player::GetInstance();
+  for (int i = 0; i < count; i++) {
+    gOut->Pulse();
+    for (int c = 0; c < SONG_CHANNEL_COUNT; c++) {
+      std::string s = player->GetPlayedInstrument(c);
+      if (s == "  ") continue;
+      std::vector<std::string> &v = gPlayed[c];
+      if (std::find(v.begin(), v.end(), s) == v.end()) v.push_back(s);
+    }
+  }
+}
+
+static void printPlayed() {
+  for (int c = 0; c < SONG_CHANNEL_COUNT; c++) {
+    if (gPlayed[c].empty()) continue;
+    printf("  channel %d played", c);
+    for (size_t k = 0; k < gPlayed[c].size(); k++) printf(" %s", gPlayed[c][k].c_str());
+    printf("\n");
+  }
+  printf("  %d buffers rendered, %d with sound\n", gOut->buffers_, gOut->audible_);
+}
+
+static void clearPhrase(Song *s, int phrase) {
+  for (int r = 0; r < 16; r++) setRow(s, phrase, r, 0xFF, 0xFF);
+}
+
+static void clearChain(Song *s, int chain) {
+  for (int r = 0; r < 16; r++) setChain(s, chain, r, 0xFF);
+}
+
+// Song rows 1 and up empty, so each channel loops its row-0 chain
+static void clearSong(Song *s) {
+  memset(s->data_, 0xFF, SONG_CHANNEL_COUNT * SONG_ROW_COUNT);
+}
+
+// Phrase bytes 90-FE, 8 per phrase on the even rows; the odd rows have a note
+// and no instrument, so they replay the channel's last instrument. Phrases
+// E0-ED, channel c's chain E0+c holds the phrases k with k%8 == c
+static void setupRange(Project *p) {
+  Song *s = p->song_;
+  clearSong(s);
+  for (int c = 0; c < SONG_CHANNEL_COUNT; c++) {
+    clearChain(s, 0xE0 + c);
+    setSong(s, c, 0, 0xE0 + c);
+  }
+  int b = 0x90;
+  for (int k = 0; b < 0xFF; k++) {
+    int ph = 0xE0 + k;
+    clearPhrase(s, ph);
+    for (int r = 0; r < 16 && b < 0xFF; r += 2, b++) {
+      setRow(s, ph, r, 0x30, b);
+      setRow(s, ph, r + 1, 0x37, 0xFF);
+    }
+    setChain(s, 0xE0 + k % 8, k / 8, ph);
+  }
+}
+
+// What the phrase header and the instrument screen ask the bank for
+static void printLookups(Project *p) {
+  InstrumentBank *bank = p->GetInstrumentBank();
+  printf("bank lookups 90-FE:");
+  for (int i = 0x90; i < 0xFF; i++) {
+    I_Instrument *in = bank->GetInstrument(i);
+    if (i == 0x90 || i == 0xA0 || i == 0xFE)
+      printf(" %02X=%s/%s/table %d", i, typeName(in->GetType()), in->GetName(), in->GetTable());
+  }
+  printf("\n");
+}
+
+// Needs a project whose slots 00-02 have samples, 03 and 04 none and 03 is
+// GetNext(), like up-basic. Channel 0 starts sampleless 03 with a table, then
+// replays it from rows without an instrument (last instrument, table); channel
+// 1 plays 04 with a looped sample. Then, as the screens would: purge 04's
+// sample (B,A on the sample field), clone 00 and 01 from the phrase screen
+// (LT+B,A). The clones land in 03 and 04, which the player still points at
+static void setupClone(Project *p) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  Song *s = p->song_;
+  for (int i = 0; i < 5; i++) {
+    I_Instrument *in = b->GetInstrument(i);
+    if (in->GetType() != IT_SAMPLE || (in->FindVariable(SIP_SAMPLE)->GetInt() >= 0) != (i < 3))
+      die("clone scenario needs samples in 00-02 and none in 03-04");
+  }
+  if (b->GetNext() != 0x03) die("clone scenario needs GetNext() == 03");
+  setVar(b->GetInstrument(0x03), SIP_TABLE, 0x00);
+  Table &t0 = TableHolder::GetInstance()->GetTable(0x00);
+  for (int r = 0; r < 16; r++) { t0.cmd1_[r] = I_CMD_VOLM; t0.param1_[r] = 0x0080; }
+  TableHolder::GetInstance()->SetUsed(0x00);
+  setVar(b->GetInstrument(0x04), SIP_SAMPLE, 2);
+  setVar(b->GetInstrument(0x04), SIP_LOOPMODE, 1);
+  clearSong(s);
+  for (int i = 0xE0; i < 0xE3; i++) {
+    clearChain(s, i);
+    clearPhrase(s, i);
+    setChain(s, i, 0, i);
+  }
+  setRow(s, 0xE0, 0, 0x30, 0x03);
+  for (int r = 2; r < 16; r += 2) setRow(s, 0xE0, r, 0x30, 0xFF);
+  setRow(s, 0xE1, 0, 0x30, 0x04);
+  for (int r = 4; r < 16; r += 4) setRow(s, 0xE1, r, 0x37, 0xFF);
+  // Channels 2-7 play the empty phrase E2: starting song mode on a channel
+  // without a phrase reads past the phrase arrays (Player::updatePhrasePos,
+  // a separate bug)
+  for (int c = 0; c < SONG_CHANNEL_COUNT; c++) setSong(s, c, 0, 0xE0 + (c < 2 ? c : 2));
+}
+
+static void cloneDuringPlay(Project *p) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  printf("before clone: %d of %d buffers with sound (only 04 has a sample), channel 0 table %s\n",
+         gOut->audible_, gOut->buffers_,
+         TablePlayback::GetTablePlayback(0).GetTable() ? "running" : "stopped");
+  // Each step is one button event in the app, which holds the mixer lock
+  MixerService *ms = MixerService::GetInstance();
+  ms->Lock();
+  b->GetInstrument(0x04)->Purge();
+  ms->Unlock();
+  pulse(20);
+  ms->Lock();
+  int c1 = b->Clone(0x00);
+  ms->Unlock();
+  ms->Lock();
+  int c2 = b->Clone(0x01);
+  ms->Unlock();
+  printf("clones of 00 and 01 went to %02X and %02X\n", c1, c2);
+}
+
+static void modePlay(const char *dir, const char *scenario) {
+  std::string sc = scenario;
+  if (sc != "range" && sc != "clone") die("unknown scenario ", scenario);
+  setvbuf(stdout, 0, _IONBF, 0);  // keep the output if a sanitizer aborts
+  gOut = new LabAudioOut();
+  Audio::GetInstance()->Insert(gOut);
+  Project *project = loadProject(dir);
+  if (sc == "range") setupRange(project);
+  else setupClone(project);
+  ViewData *viewData = new ViewData(project);
+  Player *player = Player::GetInstance();
+  if (!player->Init(project, viewData)) die("player init failed");
+  printf("# slot_lab play %s, tree %s\n", scenario, SL_TREE);
+  player->OnStartButton(PM_SONG, 0, false, 0);
+  if (sc == "range") {
+    pulse(3000);
+  } else {
+    pulse(50);
+    cloneDuringPlay(project);
+    pulse(1000);
+  }
+  player->Stop();
+  printf("played:\n");
+  printPlayed();
+  if (sc == "range") printLookups(project);
+}
+
 // ------------------------------------------------------------- main
 
 int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: slot_lab dump <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
-                    "       | gen basic|clones|tables <projdir> | lz <in> <out>\n");
+                    "       | gen basic|clones|tables <projdir> | lz <in> <out>\n"
+                    "       | play <projdir> range|clone\n");
     return 2;
   }
   std::string mode = argv[1];
@@ -554,6 +766,7 @@ int main(int argc, char **argv) {
   if (mode == "dump") modeDump(argv[2]);
   else if (mode == "save" && argc == 4) { loadProject(argv[2]); saveProject(argv[3]); }
   else if (mode == "gen" && argc == 4) modeGen(argv[2], argv[3]);
+  else if (mode == "play" && argc == 4) modePlay(argv[2], argv[3]);
   else die("bad arguments for mode ", argv[1]);
   fflush(stdout);
   _exit(0);  // skip static teardown of the app singletons
