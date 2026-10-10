@@ -1,6 +1,6 @@
 # Instrument slots as typed modules: design and plan
 
-Status: approved design; stages 0 to 4 done. Written 2026-10-09 against master `8887975`; every `file:line` below refers to that commit. Read CLAUDE.md first. Work through the stages in section 10 one session at a time, and tick each stage off here when it's committed.
+Status: approved design; stages 0 to 5 done. Written 2026-10-09 against master `8887975`; every `file:line` below refers to that commit. Read CLAUDE.md first. Work through the stages in section 10 one session at a time, and tick each stage off here when it's committed.
 
 ## 1. Goals and non-goals
 
@@ -100,7 +100,7 @@ Rows: Sample (`"Sample"`, legacy 00-7F), MIDI (`"Midi"`, legacy 80-8F, channel `
 
 Adding a type later: an enum value in `I_Instrument.h`, the class, one table row, the object in `COMMONFILES` (`projects/Makefile`). With `fields` set, no InstrumentView code is needed. Sample and MIDI keep their existing fill functions, because upstream edits `InstrumentView.cpp` (see section 9). Keep each type's `commands` array in the type's own `.cpp`, next to its `ProcessCommand` switch, so the two don't drift.
 
-As built in stage 2: `InstrumentTypes.{h,cpp}` with `type`, `saveName`, `create` and the legacy range; lookups by type, by save name and by legacy slot. `uiName`, `commands` and `fields` come with the stages that use them (4, 5, 6). Stage 4 added `uiName` (`SAMPLE`, `MIDI`, `PIGTAIL`) and `Count()`/`At(index)`: the type field lists the rows in table order. `InstrumentView`'s type switch stays until `fields` exists: it dispatches to the fill functions that 5.1 keeps, and putting view callbacks in the registry would make `Instruments/` depend on `Views/`.
+As built in stage 2: `InstrumentTypes.{h,cpp}` with `type`, `saveName`, `create` and the legacy range; lookups by type, by save name and by legacy slot. `uiName`, `commands` and `fields` come with the stages that use them (4, 5, 6). Stage 4 added `uiName` (`SAMPLE`, `MIDI`, `PIGTAIL`) and `Count()`/`At(index)`: the type field lists the rows in table order. `InstrumentView`'s type switch stays until `fields` exists: it dispatches to the fill functions that 5.1 keeps, and putting view callbacks in the registry would make `Instruments/` depend on `Views/`. Stage 5 added `commands` (each type's `Commands[]`, defined next to its `ProcessCommand`; PIGTAIL's is empty) and `help` (`CommandHelp` rows of three legend lines, `I_CMD_NONE`-terminated; only MIDI has one, for VOLM and RTRG), with `Implements` and `FindHelp`. The player's own lists, `Player::PhraseCommands` and `TablePlayback::TableCommands`, sit next to their switches. slot_lab `make cmdlists` checks all five lists against the `case` labels they describe.
 
 ### 5.2 Bank
 
@@ -230,6 +230,13 @@ Keep `CommandList.{h,cpp}` and `HelpLegend.h` structurally unchanged so upstream
 
 Runtime stays as today: unsupported commands are ignored. Natural follow-up: PIGTAIL implements VOLM, PTCH, LEGA, PFIN, ARPG, RTRG.
 
+As built in stage 5 (`sources/Application/Views/CommandContext.{h,cpp}`, `CommandSelectorModal`):
+- Resolver (`CommandContext::ResolvePhraseRow`, steps 1-3 above). Each step only runs while the link the screens came through still holds: chain row `chainRow_` of `currentChain_` holds the phrase, song row `songOffset_+songY_` of column `songX_` holds the chain. In the chain it stops at an empty row above (the chain ends there, so this row doesn't follow those). In the song column it stops where `Player::moveToNextChain` loops back to, an empty row or a chain whose first row is empty, and it reads only the rows of a chain before its first empty one. It doesn't follow the loop back from the end of a block. Besides HOP and live mode it ignores DLAY: a DLAY row's commands reach the channel before the row's note starts, so they go to the previous instrument.
+- Rule (`Check`): lit if the location's own list has the command or the resolved type implements it; otherwise dimmed if it's the other location's player command (`CA_WRONG_LOCATION`, whatever the instrument) or if the slot is known (`CA_NOT_FOR_TYPE`; an empty slot has no type, so all its instrument commands dim); lit when the slot is unknown. Player commands are never dimmed by type, even where they can't act: KILL or TABL on a channel whose instrument is empty, or anything in a table whose instrument is empty (`TablePlayback::ProcessStep` doesn't step without one).
+- Table context (`ForTable`): under the instrument screen (`VT_TABLE2`), `currentInstrument_` (FF counts as unknown). Under the phrase screen (`VT_TABLE`), the slot the phrase screen's R+DOWN recorded in `ViewData::phraseTableSlot_` for a row with TABL in either column, used while `currentTable_` still equals `phraseTable_`: so B+arrows to another table, or R+DOWN on a row without TABL, give unknown, and the mixer's R+RIGHT clears it. R+LEFT from `VT_TABLE2` to `VT_TABLE` keeps it if the table still matches.
+- Popup: the grid and its order are unchanged. Dimmed cells use `CD_COL_TITLE` (an existing colour, 853B6F in every shipped `config.xml`), and a selected dimmed cell is that colour inverted, which reads as selected and dimmed but with low-contrast text; the legend names it. "The help line says the instrument is unknown" became a status line under the grid (`CC_STATUS_LENGTH` 25, `CD_HILITE1`), because the three legend lines are all in use for many commands. It says why the selected command is dimmed ("not for I80 MIDI", "I03 is empty", "tables only", "phrases only"), otherwise which slot the commands go to ("I80 MIDI", "I03 empty", "instrument unknown"). The popup is one row taller (`CommandSelectorCommon::kStatusRows`; `popupContainsPoint` covers it). For a resolved MIDI slot the legend shows MIDI's own VOLM ("set the channel volume (CC7) to bb/2 at once") and RTRG ("send the held notes again every bb ticks, 00 stops").
+- Not done: dimming in the phrase grid itself; the phrase and table screens' own legend (cursor on a command, no popup) still shows `HelpLegend.h`'s text for every type.
+
 ## 9. Upstream merge cost
 
 - Structural core lives in files upstream hasn't touched since its 2014 import: `InstrumentBank.*`, `Song.h`, `TablePlayback.*`.
@@ -248,7 +255,7 @@ One stage per session; commit at each working stage (CLAUDE.md workflow rules). 
 | [x] | 2 | Registry refactor, no behaviour change: replace `InstrumentTypeData` and the three type switches and the constructor ranges | Warning-free build; dumps and saved XML byte-identical to stage 1; `pt_lab` ident, init, audit unchanged |
 | [x] | 3 | Empty slots, 00-FE, load/save rules (6.2, 6.3), A,A, Clone, Import, header, Compact, `LoadFirstGen` deleted, pool cap decoupled, pt_lab updated | Every upstream fixture loads to the same dump as upstream's loader, except sampleless unreferenced Sample slots, which are now empty; saving an unchanged fixture reproduces it apart from top-level node order and `LAYOUT="2"`; memory probe; owner loads upstream projects and listens; A,A, clone and import flows |
 | [x] | 4 | Type field and clear-with-confirmation through 5.3 | ASan stress that clears and changes playing slots, if slot_lab can drive the player headlessly (otherwise an ASan build of the app while the owner changes types during playback); MIDI monitor shows no stuck notes |
-| [ ] | 5 | Command lists in the registry, row resolver, popup dimming, table context | Resolver test cases in slot_lab; owner checks the popup |
+| [x] | 5 | Command lists in the registry, row resolver, popup dimming, table context | Resolver test cases in slot_lab; owner checks the popup |
 | [ ] | 6 (optional) | PIGTAIL screen via `fields`; keep unknown types' XML on save; docs (section 3 list), CLAUDE.md, README | Same tooling |
 
 Riskiest: stage 4. It is the only step that frees objects the audio path holds raw pointers to; mistakes show up as rare crashes during playback, and ASan doesn't run on handhelds. Mitigations: the single replace routine, the existing lock, the stress test.
@@ -307,6 +314,16 @@ Riskiest: stage 4. It is the only step that frees objects the audio path holds r
 - Not run by the agent: a real MIDI device or monitor (slot_lab records what the MIDI service sends); a handheld; listening. The owner's checks for this stage: the type field and the clear dialog by hand, clearing and picking types on slots that are playing, a MIDI monitor (e.g. `aseqdump`) while clearing a MIDI slot that holds a note, and emptying a referenced 80-8F slot, saving and reloading it (it should stay empty, rule 6.2 step 2 off for `LAYOUT="2"`).
 - Owner's GUI test (2026-10-10, X64 build of `c2302b9`): tried to make the type field and the clear confirmation crash and couldn't. Not reported: a MIDI monitor check or the referenced 80-8F empty-and-reload check.
 
+**Stage 5 results** (2026-10-10, branch `feat/slots-stage5` from master `809cc49`):
+- Built: the registry's command lists and MIDI's help (5.1, as built), `CommandContext` and the popup (8.2, as built). Three commits: the lists (nothing reads them), `CommandContext` with its slot_lab scenario (nothing calls it), then the popup and the screens.
+- Tooling: slot_lab `make cmdlists` (`cmdlists.py`) compares each list with the `case` labels of its switch, plus the I_CMD_* that `updatePhrasePos` and `getChannelHop` compare with for the phrase list. On a scratch copy of the sources it caught a missing entry (CRSH), a case the list lacks (VOLM added to PIGTAIL's stub) and a duplicate (DLAY). New play scenario `resolve` (fork only, on `up-basic`): 23 resolver cases (rows of one phrase, earlier phrases and chains, links that don't hold, both loop-back points, the longest search: 255 song rows, about 0.2 ms in the ASan build), `ForPhraseRow` and `ForTable` against hand-set `ViewData`, the phrase screen's R+DOWN on TABL in either column and on a row without one and the mixer's R+RIGHT through the real views, the lit and dimmed cells for every type and both locations (Sample 22/19 of 27, MIDI 13/10, PIGTAIL and an empty slot 7/4, unknown 26/23 for phrase/table), 9 status lines and MIDI's help. Two resolver rules broken one at a time: without the note requirement one case fails; counting a chain's rows after its first empty one reads phrase FF (heap-buffer-overflow under ASan).
+- Checks:
+  - `make play`: range, clone, view, dlay, flows, types and resolve clean under ASan + UBSan; 18 fixtures load. `make check`: all 18 fixtures dump and resave unchanged. `make compare`: as stage 3 (only `hand-notype`'s 81-84 and 86-8E).
+  - pt_lab: `ident` identical for all 48 models; `init` output identical to master `809cc49` (built in a scratch worktree the same day); `audit.txt` identical to the previous run; `stress` passes.
+  - Clean X64 build: 210 compiler warnings, the same set by file and message as master `809cc49` built the same way the same day (stage 4 counted 209 for its master; today's master also gives 210). None from the new files.
+  - GUI (agent, `gui_lab` on Xvfb, a copy of `up-tables`): the phrase popup on MIDI 80's row (Sample commands and IRTG dimmed, `I80 MIDI`, MIDI's VOLM help, "not for I80 MIDI" on PFIN), on Sample rows (`I01 SAMPLE`, `I02 SAMPLE` for row 0F below 0C's I02); the table screen from row 0's `TABL 0005` (`I00 SAMPLE`, TMPO, TABL, STOP, DLAY and the MIDI commands dimmed), after B+RIGHT to table 06 and through the mixer (`instrument unknown`, only the phrase-only four dimmed), under MIDI 80's instrument screen (table 10, `I80 MIDI`, MIDI's RTRG help) and under empty 7F (`I7F is empty`, only GROV, HOP, IRTG, KILL lit). With the song playing, the play marker draws at rows 00 and 0C and not over the popup or its moved bottom border. Nothing crashed.
+- Not run by the agent: listening (nothing audible changed: the lists are read only by the popup, and `ProcessCommand` is untouched); a handheld; an ASan build of the app (stage 5 frees nothing the audio path holds). The phrase screen's call of `ForPhraseRow` is covered by the GUI shots, not by slot_lab (the popup is private to `View`). The owner's check for this stage: the popup in phrases and tables over Sample, MIDI, PIGTAIL and empty slots, and whether the dimmed colour and the status line read well, including on a selected dimmed cell.
+
 ## 11. Fixtures
 
 This repo has no upstream example projects (only a `Kick5.WAV` in an old `lgpt_ALPHA` packaging folder, no save file). The owner's `~/lgpt-run` projects are fork-era and are not fixtures.
@@ -346,7 +363,7 @@ Still missing as real files (the stand-ins are in brackets):
 - Upstream's unknown-TYPE use-after-free is from reading its code; no fixture has an unknown TYPE. The rest of upstream's load behaviour above was run (stage 0).
 - Files older than 2014: whether MIDI entries were ever missing (the only reason for rule 6.2 step 2). Compressed saves: which builds wrote them is unknown; the loader reads a file made with this repo's `LZ_Compress`.
 - 32-bit memory numbers are derived, not measured on hardware. Bittboy (musl), Dingoo and RS-97 (uClibc, MIPS) and Caanoo (old GCC strings) may differ by about ±20%.
-- The GUI: stages 1-3 only by the owner; stage 4's screen by the agent under Xvfb (section 10). UI statements without such a note are from reading the code.
+- The GUI: stages 1-3 only by the owner; stage 4's and stage 5's screens by the agent under Xvfb (section 10). UI statements without such a note are from reading the code.
 - Mixer lock coverage on the JACK, PSP and W32 audio paths.
 - Upstream's plans and whether they'd take any of this.
 
@@ -358,7 +375,8 @@ Still missing as real files (the stand-ins are in brackets):
 
 ## Appendix B: unrelated bugs found while surveying
 
-- `getHelpLegend` (`HelpLegend.h:8`) returns `new std::string[3]` that no caller frees: leaks on every redraw with the cursor on a command and in the popup.
+- `getHelpLegend` (`HelpLegend.h:8`) returns `new std::string[3]` that no caller frees: leaks on every redraw with the cursor on a command and in the popup. The popup frees its copy since stage 5; `PhraseView::printHelpLegend` and `TableView::printHelpLegend` still leak. Open.
+- The table screen draws the help legend for command column 3 only while the cursor is on column 3's parameter (`TableView.cpp:955` tests `col_ == 5`; columns 1 and 2 test their command column), from reading the code. Upstream has it too. Open.
 - `Player::updatePhrasePos` (`Player.cpp:801`): DLAY in command column 2 read PARAM1. Fixed on branch `fix/pre-stage2` (upstream still has it); slot_lab's dlay scenario checks it.
 - MIDI VOLM with `aa` ≠ 00 sends CC values above 127.
 - `PersistencyService::Load` parsed the file buffer without a terminating NUL (`PersistencyService.cpp:46`, `:53`), so TinyXML read past the end of the heap block until it met a zero byte: a heap-buffer-overflow under ASan for every plain-XML fixture. Fixed on branch `fix/pre-stage2`: both the read buffer and the LZ output buffer get a NUL (the LZ part from reading the code; slot_lab's LZ fixtures contain their own NUL). Still open: an LZ file whose stored length is smaller than its data overflows the output buffer, and the error path leaks the read buffer.
