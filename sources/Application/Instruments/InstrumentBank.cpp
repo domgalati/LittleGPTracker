@@ -2,8 +2,7 @@
 #include "InstrumentBank.h"
 #include "Application/Instruments/SampleInstrument.h"
 #include "Application/Instruments/SamplePool.h"
-#include "Application/Instruments/MidiInstrument.h"
-#include "Application/Instruments/PigtailInstrument.h"
+#include "Application/Instruments/InstrumentTypes.h"
 #include "System/io/Status.h"
 #include "System/Console/Trace.h"
 #include "Application/Utils/char.h"
@@ -13,29 +12,31 @@
 #include "Application/Player/Player.h"
 #include "Filters.h"
 
-char *InstrumentTypeData[IT_LAST]= {
-	"Sample",
-	"Midi",
-	"Pigtail"
+// Which type fills which slots. Every slot is filled.
+// TODO(instrument-slots stage 3): slots start empty and this goes.
+
+struct SlotRange {
+	InstrumentType type ;
+	int first,count ;
 } ;
 
+static const SlotRange defaultLayout[]= {
+	{IT_SAMPLE,0,MAX_SAMPLEINSTRUMENT_COUNT},
+	{IT_MIDI,MAX_SAMPLEINSTRUMENT_COUNT,MAX_MIDIINSTRUMENT_COUNT},
+	{IT_PIGTAIL,PIGTAIL_INSTRUMENT_BASE,MAX_PIGTAILINSTRUMENT_COUNT}
+} ;
 
 // Contain all instrument definition
 
 InstrumentBank::InstrumentBank():Persistent("INSTRUMENTBANK") {
 
-   	for (int i=0;i<MAX_SAMPLEINSTRUMENT_COUNT;i++) {
-        SampleInstrument *s=new SampleInstrument() ;
-        instrument_[i]=s ;
-    }
-	for (int i=0;i<MAX_MIDIINSTRUMENT_COUNT;i++) {
-        MidiInstrument *s=new MidiInstrument() ;
-        s->SetChannel(i) ;
-        instrument_[MAX_SAMPLEINSTRUMENT_COUNT+i]=s ;
-    }
-	for (int i=0;i<MAX_PIGTAILINSTRUMENT_COUNT;i++) {
-        instrument_[PIGTAIL_INSTRUMENT_BASE+i]=new PigtailInstrument() ;
-    }
+	for (unsigned int r=0;r<sizeof(defaultLayout)/sizeof(defaultLayout[0]);r++) {
+		const SlotRange &range=defaultLayout[r] ;
+		const InstrumentTypeInfo *info=InstrumentTypes::Get(range.type) ;
+		for (int i=range.first;i<range.first+range.count;i++) {
+			instrument_[i]=info->create(i) ;
+		}
+	}
     Status::Set("All instrument loaded") ;
 } ;
 
@@ -78,7 +79,7 @@ void InstrumentBank::SaveContent(TiXmlNode *node) {
 			TiXmlElement data("INSTRUMENT") ;
 			hex2char(i,hex) ;
 			data.SetAttribute("ID",hex) ;
-			data.SetAttribute("TYPE",InstrumentTypeData[instr->GetType()]) ;
+			data.SetAttribute("TYPE",InstrumentTypes::Get(instr->GetType())->saveName) ;
 
 			IteratorPtr<Variable> it(instr->GetIterator()) ;
 			int count=0 ;
@@ -120,42 +121,21 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
 			unsigned char b2=c2h__(hexid[1]) ;
 			unsigned char id=b1+b2 ;			
 
-			InstrumentType it=IT_LAST ;
+			// Entries older than 2014 have no TYPE: the slot decides
 			const char* instype=current->Attribute("TYPE") ;
-			if (instype) {
-				for (int i=0;i<IT_LAST;i++) {
-					if (!strcmp(instype,InstrumentTypeData[i])) {
-						it=(InstrumentType)i ;
-						break ;
-					}
-				}
-			} else {
-				it=(id<MAX_SAMPLEINSTRUMENT_COUNT)?IT_SAMPLE:IT_MIDI ;
-			} ;
+			const InstrumentTypeInfo *info=(instype)
+				?InstrumentTypes::FindBySaveName(instype)
+				:InstrumentTypes::FindByLegacySlot(id) ;
 			if (id<MAX_INSTRUMENT_COUNT) {
         I_Instrument *instr=instrument_[id] ;
-				if (instr->GetType()!=it) {
-					I_Instrument *created=0 ;
-					switch (it) {
-						case IT_SAMPLE:
-							created=new SampleInstrument() ;
-							break ;
-						case IT_MIDI:
-							created=new MidiInstrument() ;
-							break ;
-						case IT_PIGTAIL:
-							created=new PigtailInstrument() ;
-							break ;
-						default:
-							// Unknown type (e.g. saved by a newer build): leave
-							// the slot's default instrument in place, skip params
-							Trace::Error("Unknown instrument type '%s' for instrument %s, leaving slot empty",instype?instype:"",hexid) ;
-							break ;
-					}
-					if (created) {
-						replace(id,created) ;
-					}
-					instr=created ;
+				if (!info) {
+					// Unknown type (e.g. saved by a newer build): leave
+					// the slot's default instrument in place, skip params
+					Trace::Error("Unknown instrument type '%s' for instrument %s, leaving slot empty",instype?instype:"(none)",hexid) ;
+					instr=0 ;
+				} else if (instr->GetType()!=info->type) {
+					instr=info->create(id) ;
+					replace(id,instr) ;
 				} ;
 
         TiXmlElement *param=(instr)?current->FirstChildElement():0 ;
@@ -239,19 +219,7 @@ unsigned short InstrumentBank::Clone(unsigned short i) {
 	}
 
 	I_Instrument *src=instrument_[i] ;
-	I_Instrument *dst ;
-
-	switch (src->GetType()) {
-		case IT_SAMPLE:
-			dst=new SampleInstrument() ;
-			break ;
-		case IT_PIGTAIL:
-			dst=new PigtailInstrument() ;
-			break ;
-		default:
-			dst=new MidiInstrument() ;
-			break ;
-	}
+	I_Instrument *dst=InstrumentTypes::Get(src->GetType())->create(next) ;
 	IteratorPtr<Variable> it(src->GetIterator()) ;
 	for (it->Begin();!it->IsDone();it->Next()) {
 		Variable &srcV=it->CurrentItem() ;
