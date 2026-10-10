@@ -35,7 +35,11 @@
 //                            own parameter), flows (fork: A,A and LT+(B,A) in
 //                            the phrase screen and imports from the sample
 //                            dialog; writes samples into <projdir>, so give
-//                            it a copy).
+//                            it a copy), types (fork: the instrument
+//                            screen's type field and clear confirmation on
+//                            slots the song is playing, then a seeded
+//                            random run of both; MIDI goes to a recording
+//                            device, which must end with no note held).
 //                            Meant for the ASan build (make play)
 //
 // Trace output goes to stderr; results go to stdout.
@@ -62,6 +66,7 @@
 #include "Foundation/Variables/WatchedVariable.h"
 #include "Services/Audio/Audio.h"
 #include "Services/Audio/AudioDriver.h"
+#include "Services/Midi/MidiService.h"
 #include "System/Console/Trace.h"
 #include "System/System/System.h"
 #ifdef SL_FORK
@@ -608,6 +613,10 @@ static void modeGen(const char *name, const char *dir) {
 
 // ------------------------------------------------------------- play
 
+// Set by scenarios that check MIDI output: each pulse then also ticks and
+// flushes the MIDI service, as the SDL2 driver does after every buffer
+static bool gMidiTicks = false;
+
 // Audio output for the play mode. MixerService picks it up as the first output
 // of the installed Audio; Pulse() does what a driver's buffer request does
 // (MixerService::Update: player tick, then Trigger renders), from our loop
@@ -642,6 +651,12 @@ public:
     SetChanged();
     AudioDriver::Event e(AudioDriver::Event::ADET_BUFFERNEEDED);
     NotifyObservers(&e);
+    if (gMidiTicks) {
+      SetChanged();
+      AudioDriver::Event tick(AudioDriver::Event::ADET_DRIVERTICK);
+      NotifyObservers(&tick);
+      MidiService::GetInstance()->Flush();
+    }
   }
   fixed *buffer_;
   int buffers_, audible_;
@@ -1026,6 +1041,251 @@ static void modeFlows(Project *p, ViewData *vd, const std::string &root) {
 }
 #endif
 
+#ifdef SL_FORK
+// A MIDI output that keeps whether each note is held, from the messages the
+// MIDI service flushes to it
+class LabMidiOut : public MidiOutDevice {
+public:
+  LabMidiOut() : MidiOutDevice("slot_lab"), ons_(0), offs_(0) { memset(held_, 0, sizeof(held_)); }
+  virtual bool Init() { return true; }
+  virtual void Close() {}
+  virtual bool Start() { return true; }
+  virtual void Stop() {}
+  virtual void SendMessage(MidiMessage &m) {
+    int type = m.status_ & 0xF0, ch = m.status_ & 0x0F;
+    if (type == MIDI_NOTE_ON && m.data2_ > 0) {
+      held_[ch][m.data1_ & 0x7F] = true;
+      ons_++;
+    } else if (type == MIDI_NOTE_OFF || type == MIDI_NOTE_ON) {
+      held_[ch][m.data1_ & 0x7F] = false;
+      offs_++;
+    }
+  }
+  int Held() {
+    int n = 0;
+    for (int c = 0; c < 16; c++) n += HeldOn(c);
+    return n;
+  }
+  // ch counts from 0, as MIP_CHANNEL does
+  int HeldOn(int ch) {
+    int n = 0;
+    for (int k = 0; k < 128; k++) n += held_[ch][k] ? 1 : 0;
+    return n;
+  }
+  void PrintHeld() {
+    for (int c = 0; c < 16; c++)
+      for (int k = 0; k < 128; k++)
+        if (held_[c][k]) printf("  held: MIDI channel %d note %d\n", c + 1, k);
+  }
+  bool held_[16][128];
+  int ons_, offs_;
+};
+
+static LabMidiOut *gMidiOut = 0;
+
+class LabMidi : public MidiService {
+public:
+  virtual void buildDriverList() {
+    gMidiOut = new LabMidiOut();
+    Insert(gMidiOut);
+  }
+};
+
+// One button event, as AppWindow sends it: the mask of buttons down after the
+// change, and whether it was a press
+static void button(InstrumentView *iv, unsigned short mask, bool pressed) {
+  iv->ProcessButtonMask(mask, pressed);
+}
+
+// Press and release, holding `held` throughout (B,A is button(B), B|A)
+static void press(InstrumentView *iv, unsigned short held, unsigned short b) {
+  if (held) button(iv, held, true);
+  button(iv, held | b, true);
+  button(iv, held, false);
+  if (held) button(iv, 0, false);
+}
+
+static FourCC focusID(InstrumentView *iv) {
+  UIIntVarField *f = (UIIntVarField *)iv->GetFocus();
+  return f ? f->GetVariableID() : 0;
+}
+
+static const char *slotType(InstrumentBank *b, int i) {
+  return b->IsSlotEmpty(i) ? "--" : typeName(b->GetInstrument(i)->GetType());
+}
+
+// The instrument screen shows the instrument in the current slot, and is its
+// one observer
+static bool showsSlot(InstrumentBank *b, InstrumentView *iv, ViewData *vd) {
+  return b->GetInstrument(vd->currentInstrument_)->CountObservers() == 1 && focusID(iv) == IVF_TYPE;
+}
+
+// Small LCG, so the run is the same on every host
+static unsigned gSeed = 2026;
+static int rnd(int n) {
+  gSeed = gSeed * 1103515245u + 12345u;
+  return (int)((gSeed >> 16) % (unsigned)n);
+}
+
+// Channel 0 plays MIDI 80 (channel 9 in up-basic) on every other row, channel 1
+// Sample 00 once per phrase with a table, then rows without an instrument;
+// channel 2 the empty slot 03 on every other row; channel 3 MIDI 85 once, then
+// rows without an instrument; channel 4 Sample 40. MIDI notes are held until
+// the next note (length 00)
+static void setupTypes(Project *p) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  Song *s = p->song_;
+  clearSong(s);
+  const int slots[5] = {0x80, 0x00, 0x03, 0x85, 0x40};
+  for (int c = 0; c < 5; c++) {
+    int ph = 0xE0 + c;
+    clearChain(s, ph);
+    clearPhrase(s, ph);
+    setChain(s, ph, 0, ph);
+    setSong(s, c, 0, ph);
+    for (int r = 0; r < 16; r += 2) {
+      bool named = (r == 0) || (c == 0) || (c == 2) || (c == 4);
+      setRow(s, ph, r, 0x30 + r, named ? slots[c] : 0xFF);
+    }
+  }
+  setVar(b->GetInstrument(0x00), SIP_TABLE, 0x00);
+  Table &t0 = TableHolder::GetInstance()->GetTable(0x00);
+  for (int r = 0; r < 16; r++) { t0.cmd1_[r] = I_CMD_VOLM; t0.param1_[r] = 0x0080; }
+  TableHolder::GetInstance()->SetUsed(0x00);
+}
+
+// The instrument screen's type field and clear confirmation (design doc 5.4)
+// on slots the song is playing, under ASan. Needs up-basic's slots: 00-02, 40,
+// 7F Samples, 80-8F MIDI, the rest empty
+static void modeTypes(Project *p, ViewData *vd) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  if (b->FirstEmpty() != 0x03 || filledSlots(b) != 21) die("types scenario needs up-basic's slots");
+  setupTypes(p);
+  unsigned char *phr = p->song_->phrase_->instr_;
+  LabWindow *win = new LabWindow(*new LabWindowImp());
+  InstrumentView *iv = new InstrumentView(*win, vd);
+  MidiService::GetInstance()->SelectDevice("slot_lab");
+  Player *player = Player::GetInstance();
+  player->OnStartButton(PM_SONG, 0, false, 0);
+  pulse(40);
+  printf("before any change: %d MIDI note-ons, %d held\n", gMidiOut->ons_, gMidiOut->Held());
+  expect(gMidiOut->Held() > 0, "MIDI 80 and 85 hold notes");
+
+  printf("slot 80 (MIDI), played on channel 0\n");
+  vd->currentInstrument_ = 0x80;
+  iv->OnFocus();
+  press(iv, 0, EPBM_UP);
+  expect(focusID(iv) == IVF_TYPE, "UP from the first parameter reaches the type field");
+  I_Instrument *m80 = b->GetInstrument(0x80);
+  press(iv, EPBM_A, EPBM_RIGHT);
+  expect(b->GetInstrument(0x80) == m80, "A+RIGHT on a filled slot changes nothing");
+  // up-basic's own phrases use 80, 03 and 7F once each; setupTypes adds E0 and E2
+  printf("  80 is in %d phrase(s), 03 in %d, 7F in %d, 50 in %d\n", b->ReferenceCount(0x80, phr),
+         b->ReferenceCount(0x03, phr), b->ReferenceCount(0x7F, phr), b->ReferenceCount(0x50, phr));
+  expect(b->ReferenceCount(0x80, phr) == 2 && b->ReferenceCount(0x03, phr) == 2 &&
+             b->ReferenceCount(0x7F, phr) == 1 && b->ReferenceCount(0x50, phr) == 0,
+         "reference counts");
+  press(iv, EPBM_B, EPBM_A);
+  expect(b->GetInstrument(0x80) == m80, "B,A only asks");
+  iv->OnClearSlot(false);
+  expect(b->GetInstrument(0x80) == m80, "No keeps it");
+  int ch80 = m80->FindVariable(MIP_CHANNEL)->GetInt();
+  int heldBefore = gMidiOut->HeldOn(ch80);
+  press(iv, EPBM_B, EPBM_A);
+  iv->OnClearSlot(true);
+  expect(b->IsSlotEmpty(0x80), "Yes empties 80");
+  expect(showsSlot(b, iv, vd), "the screen shows the empty slot, focus on the type field");
+  pulse(40);
+  printf("  notes held on 80's MIDI channel %d: %d before the clear, %d after\n", ch80 + 1, heldBefore,
+         gMidiOut->HeldOn(ch80));
+  expect(heldBefore > 0 && gMidiOut->HeldOn(ch80) == 0, "the clear released 80's note");
+
+  printf("picking a type for 80 in one A hold, while channel 0 plays it\n");
+  button(iv, EPBM_A, true);
+  const unsigned short steps[4] = {EPBM_RIGHT, EPBM_RIGHT, EPBM_RIGHT, EPBM_LEFT};
+  for (int k = 0; k < 4; k++) {
+    button(iv, EPBM_A | steps[k], true);
+    printf("  %s: 80 is %s\n", steps[k] == EPBM_RIGHT ? "A+RIGHT" : "A+LEFT", slotType(b, 0x80));
+    pulse(30);
+    button(iv, EPBM_A, false);
+  }
+  button(iv, 0, false);
+  expect(b->GetInstrument(0x80)->GetType() == IT_MIDI &&
+             b->GetInstrument(0x80)->FindVariable(MIP_CHANNEL)->GetInt() == 0,
+         "SAMPLE, MIDI, PIGTAIL, back to MIDI (channel 0)");
+  I_Instrument *picked = b->GetInstrument(0x80);
+  press(iv, EPBM_A, EPBM_RIGHT);
+  expect(b->GetInstrument(0x80) == picked, "after A is released, A+RIGHT changes nothing");
+  expect(showsSlot(b, iv, vd), "the screen shows it");
+
+  printf("slot 00 (Sample with a table running on channel 1)\n");
+  press(iv, EPBM_B, EPBM_LEFT);  // 80 to 7F
+  vd->currentInstrument_ = 0x00;
+  iv->OnFocus();
+  expect(focusID(iv) == IVF_TYPE, "the focus stays on the type field across slots");
+  bool tableOn = TablePlayback::GetTablePlayback(1).GetTable() != 0;
+  press(iv, EPBM_B, EPBM_A);
+  iv->OnClearSlot(true);
+  printf("  table on channel 1 %s before, %s after\n", tableOn ? "running" : "stopped",
+         TablePlayback::GetTablePlayback(1).GetTable() ? "running" : "stopped");
+  expect(tableOn && b->IsSlotEmpty(0x00), "00 emptied while its table ran");
+  pulse(40);
+
+  // Random clears (Yes or No) and picks on the slots the song plays, and two
+  // it doesn't, with pulses in between and while the dialog is open
+  printf("random run\n");
+  const int pool[7] = {0x00, 0x03, 0x40, 0x80, 0x85, 0x01, 0x8F};
+  int clears = 0, kept = 0, picks = 0, warps = 0, bad = 0;
+  for (int n = 0; n < 400; n++) {
+    int r = rnd(10);
+    if (r == 0) {
+      press(iv, EPBM_B, rnd(2) ? EPBM_RIGHT : EPBM_LEFT);
+      warps++;
+    } else {
+      int slot = pool[rnd(7)];
+      if (vd->currentInstrument_ != slot) {
+        vd->currentInstrument_ = slot;
+        iv->OnFocus();
+      }
+    }
+    int slot = vd->currentInstrument_;
+    if (b->IsSlotEmpty(slot)) {
+      button(iv, EPBM_A, true);
+      for (int k = 1 + rnd(5); k > 0; k--) {
+        button(iv, EPBM_A | (rnd(3) ? EPBM_RIGHT : EPBM_LEFT), true);
+        pulse(rnd(8));
+        button(iv, EPBM_A, false);
+      }
+      button(iv, 0, false);
+      picks++;
+    } else {
+      press(iv, EPBM_B, EPBM_A);
+      pulse(rnd(4));
+      bool yes = rnd(4) != 0;
+      iv->OnClearSlot(yes);
+      if (yes != b->IsSlotEmpty(slot)) bad++;
+      if (yes) clears++;
+      else kept++;
+    }
+    if (!showsSlot(b, iv, vd)) bad++;
+    pulse(1 + rnd(15));
+  }
+  printf("  %d clears, %d kept after No, %d A holds on empty slots, %d B+arrow moves\n", clears, kept,
+         picks, warps);
+  printf("  slots now:");
+  for (int k = 0; k < 7; k++) printf(" %02X=%s", pool[k], slotType(b, pool[k]));
+  printf("\n");
+  expect(bad == 0, "every step: Yes empties, No keeps, the screen observes the slot it shows");
+
+  player->Stop();
+  pulse(25);
+  printf("after stop: %d note-ons, %d note-offs, %d notes held\n", gMidiOut->ons_, gMidiOut->offs_,
+         gMidiOut->Held());
+  gMidiOut->PrintHeld();
+  expect(gMidiOut->Held() == 0, "no MIDI note left held");
+}
+#endif
+
 // Channel 0 plays one note with a column 1 command whose parameter has low
 // nibble 0, and DLAY dd in command column 2. Returns the pulse at which the
 // note starts
@@ -1059,10 +1319,17 @@ static void modeDlay() {
 
 static void modePlay(const char *dir, const char *scenario) {
   std::string sc = scenario;
-  if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay" && sc != "flows")
+  if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay" && sc != "flows" && sc != "types")
     die("unknown scenario ", scenario);
 #ifndef SL_FORK
-  if (sc == "flows") die("flows scenario: fork only");
+  if (sc == "flows" || sc == "types") die("flows and types scenarios: fork only");
+#else
+  if (sc == "types") {
+    // Before the project exists: MidiInstrument keeps the first service it sees
+    MidiService::Install(new LabMidi());
+    MidiService::GetInstance()->Init();
+    gMidiTicks = true;
+  }
 #endif
   setvbuf(stdout, 0, _IONBF, 0);  // keep the output if a sanitizer aborts
   gOut = new LabAudioOut();
@@ -1094,6 +1361,11 @@ static void modePlay(const char *dir, const char *scenario) {
     if (gFailed) die("flows scenario: checks failed");
     return;
   }
+  if (sc == "types") {
+    modeTypes(project, viewData);
+    if (gFailed) die("types scenario: checks failed");
+    return;
+  }
 #endif
   player->OnStartButton(PM_SONG, 0, false, 0);
   if (sc == "range") {
@@ -1115,7 +1387,7 @@ int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: slot_lab dump|mem <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
                     "       | gen basic|clones|tables <projdir> | lz <in> <out>\n"
-                    "       | play <projdir> range|clone|view|dlay|flows\n");
+                    "       | play <projdir> range|clone|view|dlay|flows|types\n");
     return 2;
   }
   std::string mode = argv[1];
