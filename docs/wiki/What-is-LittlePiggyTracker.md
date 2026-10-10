@@ -295,7 +295,7 @@ To move from one screen to the other, press the RTrigger combined with the direc
 - **Transpose:** Live transposition of every triggered instruments.
 - **Soft clip:** Master channel with 5 preset levels of saturation. Change Unity to Boost for extreme loudness!
 - **Compact Sequencer:** Free all unused chain/phrases.
-- **Compact Instruments:** All unused instruments get their sample set to (null), old parameter settings stick. A dialog offers to remove unused samples.
+- **Compact Instruments:** Sample instruments that no phrase uses are cleared, which leaves their slots empty. MIDI and PIGTAIL instruments are left alone. A dialog offers to remove unused samples.
 - **Load Song:** Brings you back to the Selector Screen.
 - **Save Song:** Save the work you do, and save frequently! The cursor will disappear while the data is being written.
 - **midi:** Lets you chose external MIDI device.
@@ -341,12 +341,18 @@ To move from one screen to the other, press the RTrigger combined with the direc
 - The seven columns of the phrase screen, from left to right: (red) row counter, note trigger, instrument selector, effect one, parameters for effect one, effect two, parameters for effect two.
 - You can clone instruments and tables in the phrase screen: LT+(B,A) as usual. You can get a new table or instrument: A,A.
 - If you copy/cut anything in the phrase screen, pasting will put the data in the column where you are currently located. Pasting incompatible data like a note into the effect column etc does nothing.
-- you can clone a MIDI instrument in the phrase screen by pressing L_TRIGGER+(B,A) on instrument number in phrase screen. Properly saved & restored. You can't delete them once cloned (can't revert them to sample type).
+- you can clone any instrument, whatever its type, by pressing L_TRIGGER+(B,A) on its instrument number in the phrase screen. The clone goes to the lowest empty slot. Properly saved & restored. To remove an instrument again, clear its slot on the instrument screen (B,A on the type field).
 - If no instrument is set when triggering a new note, tables are not stopped, running commands are not stopped and phase of oscillator instrument is not reset (allowing for clickless transition)
 
 ## Instrument Screen
 
 ![](https://web.archive.org/web/20190321005749im_/http://wiki.littlegptracker.com/lib/exe/fetch.php?media=screen:instrument_1.3n.png)
+
+There are 255 instrument slots, 00 to FE, and each one holds a sample, MIDI or PIGTAIL instrument, or nothing. Slots start empty.
+
+- **type:** the row above the parameters shows the slot's type. On an empty slot (`type: --`) hold A and press RIGHT (or LEFT) to step through SAMPLE, MIDI and PIGTAIL; the instrument is created as you step. A filled slot has to be cleared before it takes another type: B,A on this field asks for confirmation (e.g. `Clear I23 (MIDI)? In 4 phrases`, the number of phrases that use the slot), then empties the slot. Its settings are lost; the sample stays in the project and the table keeps its contents. Phrases that use the slot play whatever it holds next, and nothing while it's empty. An instrument of a type this build doesn't know (saved by a newer build) shows as e.g. `Granular (unknown)`: it plays nothing and is saved back unchanged.
+
+The sample instrument's parameters:
 
 - **sample:** selects the .wav file to associate with the instrument. you can select the same sample in more than one instrument. if you tap A,A here it will take you to the Sample Import Screen (which lets you load new .WAV into your project).
 - **FX selector:** Select between 4 impulse responses to print to the currently selected sample
@@ -422,7 +428,7 @@ Midi can be enabled on many platforms through simple software configs in your OS
 
 A midi instrument has the following settings:
 
-- **Channel** - This can be set 0x80 to 0x8F which is midi channel 1-16 respectively
+- **Channel** - MIDI channel 01-16. A new MIDI instrument starts on the channel of its slot's last hex digit: 80 (or 00, 90...) on channel 1, 8F on channel 16
 - **Volume** - The volume any NOTE ON will be sent to your device. FF=127, 00=00
 - **Length** - Sets note gate length in number of ticks.
 - **Automation** - On, the table play arrows will advance one row every time the instrument is triggered, and execute only the commands on the new rows. If this is Off, table behavior is normal (play arrows cruise around real fast).

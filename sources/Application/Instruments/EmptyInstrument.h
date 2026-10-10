@@ -4,11 +4,11 @@
 #include "I_Instrument.h"
 #include "Foundation/Variables/Variable.h"
 
-// What InstrumentBank::GetInstrument returns for a slot number outside the
-// bank, so callers always get an instrument: it plays nothing, has no
-// parameters and no table, and ignores commands. Its type is IT_LAST, which
-// is not a real type. Starting it on a channel stops the previous note and
-// table, like a sample instrument without a sample.
+// What InstrumentBank::GetInstrument returns for an empty slot or a slot
+// number outside the bank, so callers always get an instrument: it plays
+// nothing, has no parameters and no table, and ignores commands. Its type is
+// IT_LAST, which is not a real type. Starting it on a channel stops the
+// previous note and table, like a sample instrument without a sample.
 
 class EmptyInstrument:public I_Instrument {
 

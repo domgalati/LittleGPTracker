@@ -12,11 +12,27 @@ This fork is licensed under the [GPLv3](LICENSE), like upstream. Bundled third-p
 
 ## What's added
 
+### Instrument slots: any type in any slot
+
+Upstream fixes each instrument slot's type by its number: `00`–`7F` are samples, `80`–`8F` MIDI. Here the 255 slots `00`–`FE` all start empty, and each one takes any type: SAMPLE, MIDI or PIGTAIL.
+
+- **Picking a type:** the instrument screen has a `type:` field above the parameters. On an empty slot (`type: --`), hold A and press RIGHT to step through `SAMPLE`, `MIDI` and `PIGTAIL` (LEFT steps back). The instrument is created as you step; release A to keep it.
+- **Changing a type:** clear the slot first. B,A on the `type:` field asks before it empties the slot (`Clear I23 (MIDI)? In 4 phrases`). The slot's settings go with it; its sample stays in the project and its table stays as it is. Phrases keep the slot number and play whatever the slot holds next. An empty slot plays nothing.
+- **New instruments:** A,A in a phrase's instrument column gives the lowest empty slot. Cloning an instrument (LT+(B,A) on its number in a phrase) copies it into the lowest empty slot, whatever its type. Importing a sample into an empty slot creates a sample instrument there. A new MIDI instrument starts on the MIDI channel given by its slot's last hex digit (`80` and `90` on channel 1, `8F` on 16), as upstream's MIDI slots do.
+- **Compact Instruments** empties the sample slots no phrase uses. MIDI and PIGTAIL slots are left alone.
+- **Command popup:** in the phrase and table screens, the command popup (A+UP/DOWN in a command column) dims the commands that won't do anything for the instrument that row plays, or in that screen, and a status line under the grid says why.
+
+Project files:
+
+- Projects saved by upstream LittleGPTracker load and play as they do upstream, including files older than 2014. Sample slots without a sample load as empty slots.
+- Projects saved by this build use the same file name and format, with `LAYOUT="2"` on the instrument bank. They aren't meant to be opened in upstream builds.
+- An instrument whose type this build doesn't know (one added by a newer build, say) is kept. Its slot shows `type: Granular (unknown)`, plays nothing, and is saved back unchanged. Clear it to reuse the slot.
+
 ### PIGTAIL: a synth instrument
 
 LGPT's instruments have so far been sample players (and MIDI out). PIGTAIL adds a new instrument type that generates sound instead of playing back a sample. Its voice is the Braids macro oscillator by Émilie Gillet ([github.com/pichenettes/eurorack](https://github.com/pichenettes/eurorack), MIT license), which gives you 48 oscillator models in one instrument.
 
-PIGTAIL instruments live in slots `90`–`9F` (instrument types are fixed per slot: `00`–`7F` are samples, `80`–`8F` MIDI). Put one of those numbers in a phrase's instrument column, and its instrument view shows these parameters:
+A PIGTAIL instrument can go in any slot: pick `PIGTAIL` in an empty slot's `type:` field (see above). Put that slot's number in a phrase's instrument column, and its instrument view shows these parameters:
 
 | Parameter | Range | Description |
 | --- | --- | --- |

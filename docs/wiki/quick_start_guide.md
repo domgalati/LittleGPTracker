@@ -28,7 +28,7 @@ the config file is an [xml](http://en.wikipedia.org/wiki/XML) document which can
 
 ## loading samples
 
-before you load any [samples](http://en.wikipedia.org/wiki/Sampling_(music)) they must be in the correct format. piggy loads 8 or 16bit .wav files, stereo or mono, and any sampling rate. there are 7F (128) instrument slots. if you're running on gp32 or gp2x the total size of your samples needs to be less than the RAM limitation of the machine.
+before you load any [samples](http://en.wikipedia.org/wiki/Sampling_(music)) they must be in the correct format. piggy loads 8 or 16bit .wav files, stereo or mono, and any sampling rate. there are FF (255) instrument slots, 00 to FE, and any of them can hold a sample instrument. if you're running on gp32 or gp2x the total size of your samples needs to be less than the RAM limitation of the machine.
 
 unlike traditional trackers, piggy doesn't store sample data in the module file. instead, samples are stored in a directory and loaded each time piggy is run. references to the samples are saved with the project as instruments, and if piggy finds any new .wav files when it is run they will be assigned to free instruments.
 
