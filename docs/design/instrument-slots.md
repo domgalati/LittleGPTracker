@@ -1,6 +1,6 @@
 # Instrument slots as typed modules: design and plan
 
-Status: approved design, not implemented. Written 2026-10-09 against master `8887975`; every `file:line` below refers to that commit. Read CLAUDE.md first. Work through the stages in section 10 one session at a time, and tick each stage off here when it's committed.
+Status: approved design; stages 0 and 1 done. Written 2026-10-09 against master `8887975`; every `file:line` below refers to that commit. Read CLAUDE.md first. Work through the stages in section 10 one session at a time, and tick each stage off here when it's committed.
 
 ## 1. Goals and non-goals
 
@@ -40,17 +40,17 @@ PIGTAIL's saved TYPE string (`"Pigtail"`) and shape names only need to stay stab
 | `sources/Application/Model/Song.h:11-21` | Per-type counts, `PIGTAIL_INSTRUMENT_BASE`, `MAX_INSTRUMENT_COUNT` = 0xA0 | 0xFF slots. `MAX_PIGTAILINSTRUMENT_COUNT` and `PIGTAIL_INSTRUMENT_BASE` go. `LEGACY_INSTRUMENT_COUNT` becomes the upstream slot count 0x90 (only used by the registry's legacy rule, if at all) |
 | `InstrumentBank.cpp:23-38` | Constructor fills 00-7F Sample, 80-8F MIDI (`SetChannel(i)`), 90-9F PIGTAIL | Slots start empty |
 | `InstrumentBank.cpp:44-55` | `AssignDefaults` casts 00-7F to `SampleInstrument` | Create Sample slots only for the samples already in the pool (as today) |
-| `InstrumentBank.cpp:63-65` | `GetInstrument` has no bounds check | Never returns null; empty stand-in for empty/out-of-range |
+| `InstrumentBank.cpp:63-65` | `GetInstrument` has no bounds check | Never returns null; empty stand-in for empty/out-of-range (out-of-range done in stage 1) |
 | `InstrumentBank.cpp:58, 69, 205, 267` | Every slot is non-null | Skip empty slots |
 | `InstrumentBank.cpp:72, 88` | Save skips `IsEmpty()` slots and entries with no PARAM | Skip null slots; keep the `IsEmpty()` rule; write the entry even if the type has no parameters |
 | `InstrumentBank.cpp:128` | An entry with no TYPE is Sample below 0x80, else MIDI | Keep (registry legacy ranges) |
 | `InstrumentBank.cpp:130` | IDs 0xA0+ silently dropped | Range 00-FE |
 | `InstrumentBank.cpp:14-18, 134-149` | Type-name table and type `switch` | Registry |
 | `InstrumentBank.cpp:210-221` | `GetNext` scans only 00-7F and casts to `SampleInstrument` (works on other types only by accident: `FindVariable` returns null) | Lowest empty slot |
-| `InstrumentBank.cpp:223-264` | `Clone` targets `GetNext()`, so MIDI/PIGTAIL clones land in sample slots; `default:` creates MIDI; deletes the target without clearing player pointers (existing use-after-free hazard via `lastInstrument_`) | Lowest empty slot, registry factory, safe replace routine |
+| `InstrumentBank.cpp:223-264` | `Clone` targets `GetNext()`, so MIDI/PIGTAIL clones land in sample slots; `default:` creates MIDI; deletes the target without clearing player pointers (existing use-after-free hazard via `lastInstrument_`) | Lowest empty slot, registry factory, safe replace routine (replace routine done in stage 1) |
 | `Player.cpp:835-844` | Unchecked `GetInstrument(instr)`; falls back to slot 00 when the channel has no last instrument | Works as-is with the empty stand-in (an empty slot plays nothing, stops the previous note and the table) |
-| `PlayerMixer.h:67`, `PlayerChannel.h:28`, `TablePlayback.h:34` | Raw instrument pointers, reset only on project load (`PlayerMixer.cpp:36-38`) | Cleared by the replace routine before an instrument is deleted |
-| `InstrumentView.cpp:31-81` | Type `switch`. Lines 48-50 remove the observer from the new instrument instead of the old one | Registry, plus the observer fix |
+| `PlayerMixer.h:67`, `PlayerChannel.h:28`, `TablePlayback.h:34` | Raw instrument pointers, reset only on project load (`PlayerMixer.cpp:36-38`) | Cleared by the replace routine before an instrument is deleted (stage 1) |
+| `InstrumentView.cpp:31-81` | Type `switch`. Lines 48-50 remove the observer from the new instrument instead of the old one | Registry, plus the observer fix (fix done in stage 1) |
 | `InstrumentView.cpp:303-314` | B+arrows wrap at `MAX_INSTRUMENT_COUNT` | Works with 0xFF (±16 then wraps modulo 255, like phrase and chain numbers) |
 | `InstrumentView.cpp:397-420` | B+A purges a Sample when focus is on the *first* field, clears the table on the *last* field | Match by variable ID, because the type field becomes the first field |
 | `PhraseView.cpp:178` | Instrument column limit `MAX_INSTRUMENT_COUNT-1` | 0xFE |
@@ -103,7 +103,7 @@ Adding a type later: an enum value in `I_Instrument.h`, the class, one table row
 ### 5.2 Bank
 
 - `I_Instrument *slot_[0xFF]`, null means empty.
-- `GetInstrument(i)` returns a per-bank `EmptyInstrument` for empty or out-of-range slots: `Start` returns false, `Render` returns false, name `--`, `GetTable()` returns `VAR_OFF`, no parameters, `ProcessCommand` does nothing. Existing callers can't crash; code that cares calls `IsSlotEmpty(i)`. It is per bank, not static, because views register as observers on whatever `GetInstrument` returns and the bank's lifetime matches the views'.
+- `GetInstrument(i)` returns a per-bank `EmptyInstrument` for empty or out-of-range slots: `Start` returns false, `Render` returns false, name `--`, `GetTable()` returns `VAR_OFF`, no parameters, `ProcessCommand` does nothing. Existing callers can't crash; code that cares calls `IsSlotEmpty(i)`. It is per bank, not static, because views register as observers on whatever `GetInstrument` returns and the bank's lifetime matches the views'. As built in stage 1: `EmptyInstrument.h`, header-only, type `IT_LAST` (not a real type).
 - `FirstEmpty()`, `Clone(i)` (to the lowest empty slot), `ReferenceCount(i)` (scan of the 4,080 phrase bytes, for the confirmation text).
 
 ### 5.3 Replacing a slot's instrument safely
@@ -112,7 +112,10 @@ One routine handles every deletion (clear, type change, Compact, Clone's target 
 1. Stop the old instrument on every channel that's playing it (MIDI sends its note-offs from `Stop`).
 2. Reset `PlayerMixer::lastInstrument_` entries pointing at it to the bank's empty stand-in (so the slot-00 fallback in `Player.cpp:842-844` doesn't kick in).
 3. Stop table playback that it started and clear `TablePlayback::instrument_`.
-4. Delete it and install the new one (or null).
+4. Notify its observers with `InstrumentEvent` `IET_DELETED` (added in stage 1: the instrument screen observes the instrument it shows). An observer forgets the instrument. It must not add or remove observers from `Update`, because the list is being walked.
+5. Delete it and install the new one (or null).
+
+As built in stage 1: `InstrumentBank::replace()` takes `MixerService::Lock()` and calls `Player::ForgetInstrument` (`PlayerMixer::ForgetInstrument`, `TablePlayback::ForgetInstrument`) for steps 1-3.
 
 Threading: button handlers run under the mixer lock (`AppWindow::onEvent`, `AppWindow.cpp:479-516`) and rendering runs under the same lock (`MixerService::Update`, `MixerService.cpp:129-139`, which calls `AudioOutDriver::Trigger` → `AudioMixer::Render`). SDL mutexes are recursive, so the routine may lock again. Read for the SDL, AudioOutDriver and DummyAudioOut paths only (section 12).
 
@@ -232,7 +235,7 @@ One stage per session; commit at each working stage (CLAUDE.md workflow rules). 
 | Done | Stage | Change | How to verify |
 |---|---|---|---|
 | [x] | 0 | Tooling: `tools/slot_lab` harness (Appendix A methods): dump slot → type → parameters and the slots phrases reference; load, save, diff. Build upstream/master in a scratch export, with a slot_lab variant linked against upstream's objects. Fixtures in `tools/slot_lab/fixtures/` (section 11) | Baseline dumps of every fixture from upstream's loader |
-| [ ] | 1 | Safety only, no behaviour change: bounds-checked `GetInstrument` with the empty stand-in, the replace routine (5.3) used by Clone, the InstrumentView observer fix | ASan run with phrase bytes A0-FE and clone-after-play; fixture dumps unchanged; owner plays a project |
+| [x] | 1 | Safety only, no behaviour change: bounds-checked `GetInstrument` with the empty stand-in, the replace routine (5.3) used by Clone, the InstrumentView observer fix | ASan run with phrase bytes A0-FE and clone-after-play; fixture dumps unchanged; owner plays a project |
 | [ ] | 2 | Registry refactor, no behaviour change: replace `InstrumentTypeData` and the three type switches and the constructor ranges | Warning-free build; dumps and saved XML byte-identical to stage 1; `pt_lab` ident, init, audit unchanged |
 | [ ] | 3 | Empty slots, 00-FE, load/save rules (6.2, 6.3), A,A, Clone, Import, header, Compact, `LoadFirstGen` deleted, pool cap decoupled, pt_lab updated | Every upstream fixture loads to the same dump as upstream's loader, except sampleless unreferenced Sample slots, which are now empty; saving an unchanged fixture reproduces it apart from top-level node order and `LAYOUT="2"`; memory probe; owner loads upstream projects and listens; A,A, clone and import flows |
 | [ ] | 4 | Type field and clear-with-confirmation through 5.3 | ASan stress that clears and changes playing slots, if slot_lab can drive the player headlessly (otherwise an ASan build of the app while the owner changes types during playback); MIDI monitor shows no stuck notes |
@@ -240,6 +243,15 @@ One stage per session; commit at each working stage (CLAUDE.md workflow rules). 
 | [ ] | 6 (optional) | PIGTAIL screen via `fields`; keep unknown types' XML on save; docs (section 3 list), CLAUDE.md, README | Same tooling |
 
 Riskiest: stage 4. It is the only step that frees objects the audio path holds raw pointers to; mistakes show up as rare crashes during playback, and ASan doesn't run on handhelds. Mitigations: the single replace routine, the existing lock, the stress test.
+
+**Stage 1 results** (2026-10-09, branch `feat/slots-stage1` from `tools/slot-lab`, commits e23525c to 987c100):
+- Built: `EmptyInstrument`, returned by `GetInstrument` for numbers outside the bank; `InstrumentBank::replace()` (5.3), used by `Clone` and by the load-time type change in `RestoreContent`; `ForgetInstrument` in `Player`, `PlayerMixer` and `TablePlayback`; `InstrumentEvent` `IET_DELETED`; the `InstrumentView` observer fix. `Clone` refuses numbers outside the bank (it would have cloned the stand-in into a MIDI instrument). The instrument screen for such a number has no fields; two button paths that dereferenced the focused field now check for none.
+- Added to the design: step 4 of 5.3, and the rule that an observer's `Update` doesn't add or remove observers. The instrument screen's `Update` rebuilds only while the current slot still holds the instrument it shows. The phrase screen can set the current slot to FF without switching screens, and switching instruments inside `Update` would remove the observer from the list being walked.
+- Tooling: slot_lab `make play` (CLAUDE.md, test tooling). Before the fixes (e23525c), range was a heap-buffer-overflow in `GetInstrument` from `Player.cpp:836`, and clone a heap-use-after-free in `TablePlayback::ProcessStep`. After: range, clone and view run clean.
+- Each part was checked by reverting it alone. Each of the three forget steps gives its own use-after-free: table step, `PlayerChannel::Render`, and `PlayerChannel::StartInstrument` through the last instrument. The view scenario's 11 checks: the old `RemoveObserver` fails 4; without the `IET_DELETED` handling it's a use-after-free in `RemoveObserver`; without the slot check in `Update`, a heap-buffer-overflow in `Observable::NotifyObservers`.
+- `make check`: dumps and resaves unchanged for all 18 fixtures. Clean X64 build: the same 180 warnings as 6cd5351 (only line numbers move). pt_lab `init` and `stress` pass; the binary boots headless.
+- Behaviour now (player side run in the range and clone scenarios; screen text from reading the code): a phrase row with A0-FE stops the channel's note and table and plays nothing, like a sample slot without a sample; the phrase header shows `Ia0: --`. A channel whose last instrument was replaced plays nothing for rows without an instrument number until a row names one (the stand-in, not slot 00). LT+(B,A) on a row with A0-FE shows "No more instruments".
+- Not run: the GUI (the owner's test); the lock against the real SDL audio thread. slot_lab is single-threaded. Button handlers already hold the lock, and `replace()` takes it again.
 
 ## 11. Fixtures
 
@@ -296,4 +308,8 @@ Still missing as real files (the stand-ins are in brackets):
 - `Player::updatePhrasePos` (`Player.cpp:801`): DLAY in command column 2 reads PARAM1.
 - MIDI VOLM with `aa` ≠ 00 sends CC values above 127.
 - From reading the code, not run: `PersistencyService::Load` parses the file buffer without a terminating NUL (`PersistencyService.cpp:46`, `:53`), so TinyXML reads past the end of the heap block until it meets a zero byte.
+- `Player::updatePhrasePos` (`Player.cpp:793` and `:799`) reads `cmd1_`/`cmd2_` at phrase 0xFF for a channel without a phrase: song mode started on a row where a channel is empty, or on a chain row without a phrase. That's up to 16 entries past the arrays; a heap-buffer-overflow under ASan (slot_lab, 2026-10-09). slot_lab's clone scenario gives every channel a phrase to avoid it.
+- `SampleInstrument::Render` computes `feedbackPick` from `renderParams::feedbackOut_`, which is never initialised while feedback is off (UBSan signed overflow on ASan's 0xBE fill). The pointer isn't dereferenced then.
+- `InstrumentView` treats every field as a `UIIntVarField`, both when it restores the focus in `onInstrumentChange` and when it sets `lastFocusID_` after a button. But the Sample layout has `UIStaticField`s, so `GetVariableID` reads a `Variable&` out of a `UIStaticField` (UBSan vptr). This matters for stage 4's type field, which needs its own FourCC.
+- `Observable::CountObservers` is declared but defined nowhere (slot_lab defines it).
 - From reading the code, not run in the app: the `Mixer` singleton is created only by `MixerView` drawing, `PlayerMixer::Update` or `MixerService::SetPregain`, all after `persist->Load()` (`AppWindow.cpp:345`). If nothing created it earlier, the first project loaded in a session skips its `<MIXER>` node (bus, volume, HPF, LPF), and the next save writes defaults. slot_lab creates the Mixer before loading.
