@@ -23,7 +23,7 @@ static void ClearSlotCallback(View &v,ModalView &dialog) {
 
 InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):
 	FieldView(w,data),
-	typeVar_("type",IVF_TYPE,typeNames_,InstrumentTypes::Count()+1,0) {
+	typeVar_("type",IVF_TYPE,typeNames_,InstrumentTypes::Count()+2,0) {
 
 	project_=data->project_ ;
 	lastFocusID_=0 ;
@@ -35,6 +35,8 @@ InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):
 	for (int k=0;k<InstrumentTypes::Count();k++) {
 		typeNames_[k+1]=InstrumentTypes::At(k)->uiName ;
 	}
+	unknownType_[0]=0 ;
+	typeNames_[InstrumentTypes::Count()+1]=unknownType_ ;
 	onInstrumentChange() ;
 }
 
@@ -325,12 +327,19 @@ void InstrumentView::fillTypeField() {
 
 	int i=viewData_->currentInstrument_ ;
 	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
-	InstrumentType type=bank->GetInstrument(i)->GetType() ;
+	I_Instrument *instr=bank->GetInstrument(i) ;
+	InstrumentType type=instr->GetType() ;
 	int index=0 ;
 	for (int k=0;k<InstrumentTypes::Count();k++) {
 		if (InstrumentTypes::At(k)->type==type) {
 			index=k+1 ;
 		}
+	}
+	// A filled slot without a registry type keeps an entry this build
+	// doesn't know: its name ("Granular (unknown)") is the list's last entry
+	if ((index==0)&&(!bank->IsSlotEmpty(i))) {
+		snprintf(unknownType_,sizeof(unknownType_),"%s",instr->GetName()) ;
+		index=InstrumentTypes::Count()+1 ;
 	}
 	typeVar_.SetInt(index,false) ;
 
@@ -387,8 +396,6 @@ void InstrumentView::askClearSlot() {
 	if (bank->IsSlotEmpty(i)) {
 		return ;
 	}
-	I_Instrument *instr=bank->GetInstrument(i) ;
-	const InstrumentTypeInfo *info=InstrumentTypes::Get(instr->GetType()) ;
 	int phrases=bank->ReferenceCount(i,viewData_->song_->phrase_->instr_) ;
 
 	// MessageBox shows one line of up to 36 characters
@@ -399,7 +406,7 @@ void InstrumentView::askClearSlot() {
 		sprintf(used,"In %d phrase%s",phrases,(phrases==1)?"":"s") ;
 	}
 	char message[40] ;
-	sprintf(message,"Clear I%2.2X (%s)? %s",i,info?info->uiName:"?",used) ;
+	sprintf(message,"Clear I%2.2X (%s)? %s",i,bank->GetTypeName(i),used) ;
 
 	clearSlot_=i ;
 	MessageBox *mb=new MessageBox(*this,message,MBBF_YES|MBBF_NO) ;

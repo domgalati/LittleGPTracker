@@ -72,16 +72,16 @@ const CommandHelp *CommandContext::GetHelp(FourCC command,
 std::string CommandContext::GetStatus(FourCC command,
                                       InstrumentBank *bank) const {
 	I_Instrument *instrument=GetInstrument(bank) ;
-	// The empty stand-in has no registry row
-	const InstrumentTypeInfo *info=
-		instrument?InstrumentTypes::Get(instrument->GetType()):0 ;
+	// 0 for an empty slot. An entry of a type this build doesn't know has
+	// its saved TYPE, and none of its commands do anything here
+	const char *type=instrument?bank->GetTypeName(slot_):0 ;
 	char line[CC_STATUS_LENGTH+1] ;
 	switch (Check(command,bank)) {
 		case CA_WRONG_LOCATION:
 			return (location_==CL_PHRASE)?"tables only":"phrases only" ;
 		case CA_NOT_FOR_TYPE:
-			if (info) {
-				snprintf(line,sizeof(line),"not for I%2.2X %s",slot_,info->uiName) ;
+			if (type) {
+				snprintf(line,sizeof(line),"not for I%2.2X %s",slot_,type) ;
 			} else {
 				snprintf(line,sizeof(line),"I%2.2X is empty",slot_) ;
 			}
@@ -92,8 +92,8 @@ std::string CommandContext::GetStatus(FourCC command,
 	if (!instrument) {
 		return "instrument unknown" ;
 	}
-	if (info) {
-		snprintf(line,sizeof(line),"I%2.2X %s",slot_,info->uiName) ;
+	if (type) {
+		snprintf(line,sizeof(line),"I%2.2X %s",slot_,type) ;
 	} else {
 		snprintf(line,sizeof(line),"I%2.2X empty",slot_) ;
 	}

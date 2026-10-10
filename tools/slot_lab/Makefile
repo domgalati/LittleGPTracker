@@ -31,7 +31,8 @@
 #                    the table player's) match the switches they describe
 #                    (cmdlists.py). Exits 1 on any difference
 #   make play        play scenarios (slot_lab play) on fixtures/up-basic
-#                    (flows on a copy of it, since it imports samples),
+#                    (flows and unknown on a copy of it, since they write
+#                    into the project),
 #                    then a dump of every fixture, under ASan + UBSan: the
 #                    sources in SAN_DIRS rebuilt instrumented, the rest linked
 #                    from the fork's X64 objects. Exits 1 on any sanitizer report
@@ -89,7 +90,7 @@ SAN_DIRS := Application/Instruments Application/Player Application/Mixer Applica
 SAN_SRC   = $(foreach f,$(wildcard $(foreach d,$(SAN_DIRS),$(ROOT)/sources/$(d)/*.cpp)), \
               $(if $(wildcard $(FORK_OBJDIR)/$(notdir $(f:.cpp=.o))),$(f)))
 SAN_SKIP  = LINUXMain.o $(notdir $(SAN_SRC:.cpp=.o))
-PLAY     := range clone view dlay flows types resolve fields
+PLAY     := range clone view dlay flows types resolve fields unknown
 
 .PHONY: trees check compare mem baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean play cmdlists
 
@@ -141,7 +142,7 @@ play: $(BUILD)/slot_lab_asan
 	@rm -rf $(BUILD)/play && mkdir -p $(BUILD)/play
 	@status=0; for s in $(PLAY); do \
 	  dir=fixtures/up-basic; \
-	  if [ $$s = flows ]; then dir=$(BUILD)/play/flows-project; cp -r fixtures/up-basic $$dir; fi; \
+	  if [ $$s = flows ] || [ $$s = unknown ]; then dir=$(BUILD)/play/$$s-project; cp -r fixtures/up-basic $$dir; fi; \
 	  ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1 \
 	    $(BUILD)/slot_lab_asan play $$dir $$s > $(BUILD)/play/$$s.out 2> $(BUILD)/play/$$s.log; \
 	  rc=$$?; cat $(BUILD)/play/$$s.out; \

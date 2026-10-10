@@ -5,6 +5,7 @@
 #include "Application/Model/Song.h"
 #include "Application/Instruments/I_Instrument.h"
 #include "Application/Instruments/EmptyInstrument.h"
+#include "Application/Instruments/UnknownInstrument.h"
 
 #define NO_MORE_INSTRUMENT 0x100
 
@@ -17,6 +18,9 @@ public:
 	// stand-in
 	I_Instrument *GetInstrument(int i) ;
 	bool IsSlotEmpty(int i) ;
+	// What the screens call the slot's type: the registry's name, the saved
+	// TYPE of an entry this build doesn't know, or 0 for an empty slot
+	const char *GetTypeName(int i) ;
 	virtual void SaveContent(TiXmlNode *node);
 	virtual void RestoreContent(TiXmlElement *element);
 	// Load rule that needs the whole file: run after the project has loaded
@@ -35,6 +39,8 @@ public:
 	unsigned short Clone(unsigned short i) ;
 private:
 	void replace(int i,I_Instrument *instrument) ;
+	// Slot i's instrument if it holds an entry of an unknown type, else 0
+	UnknownInstrument *getUnknown(int i) ;
 
 	I_Instrument *instrument_[MAX_INSTRUMENT_COUNT] ;
 	EmptyInstrument empty_ ;

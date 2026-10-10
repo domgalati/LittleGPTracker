@@ -47,8 +47,11 @@
 //                            commands each type and location dims), fields
 //                            (fork: every registry layout of an instrument
 //                            screen against its type's variables, and the
-//                            screen built from it). Meant for the ASan build
-//                            (make play)
+//                            screen built from it), unknown (fork: entries of
+//                            types this build doesn't know, added to
+//                            <projdir>'s save before it loads, so give it a
+//                            copy: kept, saved back, silent, cloned, cleared).
+//                            Meant for the ASan build (make play)
 //
 // Trace output goes to stderr; results go to stdout.
 
@@ -329,6 +332,17 @@ static void modeDump(const char *dir) {
     }
     I_Instrument *in = bank->GetInstrument(i);
     int t = in->GetType();
+#ifdef SL_FORK
+    // An entry of a type this build doesn't know, kept as it loaded
+    if (t == IT_LAST) {
+      std::string entry;
+      entry << ((UnknownInstrument *)in)->GetEntry();
+      printf("I%02X unknown type %s", i, bank->GetTypeName(i));
+      if (rows[i]) printf(", %d rows in phrases%s", rows[i], phrases[i].c_str());
+      printf("\n    %s\n", entry.c_str());
+      continue;
+    }
+#endif
     std::vector<std::string> lines = varLines(in);
     bool atDefaults = false;
     I_Instrument *fresh = freshInstrument(t);
@@ -1649,6 +1663,161 @@ static void modeFields(Project *p, ViewData *vd) {
 }
 #endif
 
+#ifdef SL_FORK
+// ------------------------------------------------------------- unknown
+
+// Entries of types this build doesn't know, written into a copy of up-basic's
+// save before it loads (addUnknownEntries): 40's TYPE becomes Granular and
+// 8F's Midi2 (a phrase plays each; 8F is in the legacy MIDI range, and
+// up-basic has no LAYOUT, so load rule 6.2 step 2 runs); new entries 95 (a
+// long TYPE, a child that isn't a PARAM, text), A0 (no TYPE, outside the
+// legacy ranges) and B0 (non-ASCII bytes in its TYPE)
+static const int gUnknownSlots[5] = {0x40, 0x8F, 0x95, 0xA0, 0xB0};
+static const char *gUnknownNames[5] = {"Granular", "Midi2", "FutureSy", "?", "Gr??nula"};
+// The edited save, as written
+static TiXmlDocument gUnknownInput;
+
+static TiXmlElement *findEntry(TiXmlElement *bank, int slot) {
+  char id[3];
+  sprintf(id, "%02X", slot);
+  for (TiXmlElement *e = bank->FirstChildElement("INSTRUMENT"); e; e = e->NextSiblingElement("INSTRUMENT"))
+    if (!strcmp(e->Attribute("ID"), id)) return e;
+  return 0;
+}
+
+static TiXmlElement *bankNode(TiXmlDocument &doc) {
+  TiXmlElement *bank = doc.RootElement()->FirstChildElement("INSTRUMENTBANK");
+  if (!bank) die("no INSTRUMENTBANK");
+  return bank;
+}
+
+static std::string xmlText(const TiXmlNode *n) {
+  std::string s;
+  if (n) s << *n;
+  return s;
+}
+
+static void addUnknownEntries(const char *dir) {
+  std::string file = std::string(dir) + "/lgptsav.dat";
+  int len;
+  unsigned char *buf = readFile(file.c_str(), &len);
+  gUnknownInput.Parse((char *)buf);
+  free(buf);
+  if (gUnknownInput.Error()) die("XML error in ", file.c_str());
+  TiXmlElement *bank = bankNode(gUnknownInput);
+  findEntry(bank, 0x40)->SetAttribute("TYPE", "Granular");
+  findEntry(bank, 0x8F)->SetAttribute("TYPE", "Midi2");
+  TiXmlDocument extra;
+  extra.Parse("<X><INSTRUMENT ID=\"95\" TYPE=\"FutureSynthesizer\"><PARAM NAME=\"wave\" VALUE=\"7\" />"
+              "<ENVELOPE ATTACK=\"03\" RELEASE=\"40\">slow</ENVELOPE><PARAM NAME=\"volume\" VALUE=\"200\" />"
+              "</INSTRUMENT><INSTRUMENT ID=\"A0\"><PARAM NAME=\"volume\" VALUE=\"10\" /></INSTRUMENT>"
+              "<INSTRUMENT ID=\"B0\" TYPE=\"Gr\xc3\xa4nular\" /></X>");
+  if (extra.Error()) die("XML error in the added entries");
+  for (TiXmlElement *e = extra.RootElement()->FirstChildElement(); e; e = e->NextSiblingElement())
+    bank->InsertEndChild(*e);
+  // As the app writes it. Not compact: the loader takes a file that ends
+  // right after its last '>' for an LZ one (design doc, Appendix B)
+  if (!gUnknownInput.SaveFile(file.c_str())) die("can't write ", file.c_str());
+}
+
+// The bank's save, in memory
+static TiXmlElement *saveBank(InstrumentBank *b, TiXmlDocument &doc) {
+  doc.Clear();
+  doc.InsertEndChild(TiXmlElement("LITTLEGPTRACKER"));
+  b->Save(doc.RootElement());
+  return bankNode(doc);
+}
+
+// Each slot's saved entry against the edited input's entry for `from`
+static bool savedAsLoaded(TiXmlElement *saved, int slot, int from) {
+  TiXmlElement want(*findEntry(bankNode(gUnknownInput), from));
+  char id[3];
+  sprintf(id, "%02X", slot);
+  want.SetAttribute("ID", id);
+  return xmlText(findEntry(saved, slot)) == xmlText(&want);
+}
+
+// Load, save, play, the screens and the bank's other actions on slots that
+// hold entries of unknown types. Needs up-basic: 03 the first empty slot
+static void modeUnknown(Project *p, ViewData *vd) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  char line[200];
+  printf("loaded\n");
+  for (int k = 0; k < 5; k++) {
+    int i = gUnknownSlots[k];
+    const char *name = b->GetTypeName(i);
+    snprintf(line, sizeof(line), "I%02X: type name %s, name \"%s\"", i, name ? name : "(none)",
+             b->GetInstrument(i)->GetName());
+    expect(!b->IsSlotEmpty(i) && name && !strcmp(name, gUnknownNames[k]) && b->GetInstrument(i)->GetType() == IT_LAST,
+           line);
+  }
+  expect(b->FirstEmpty() == 0x03, "A,A's slot is still 03: the kept entries aren't empty slots");
+
+  TiXmlDocument out;
+  TiXmlElement *saved = saveBank(b, out);
+  bool same = true;
+  for (int k = 0; k < 5; k++) same = same && savedAsLoaded(saved, gUnknownSlots[k], gUnknownSlots[k]);
+  expect(same, "saved: each kept entry exactly as it loaded");
+  printf("    %s\n", xmlText(findEntry(saved, 0x95)).c_str());
+
+  // Channel 0 plays only the kept entries and rows without an instrument
+  Song *s = p->song_;
+  clearSong(s);
+  clearChain(s, 0xE0);
+  clearPhrase(s, 0xE0);
+  setChain(s, 0xE0, 0, 0xE0);
+  setSong(s, 0, 0, 0xE0);
+  const int rows[8] = {0x95, 0xFF, 0x40, 0xFF, 0xA0, 0x8F, 0xFF, 0x95};
+  for (int r = 0; r < 8; r++) setRow(s, 0xE0, 2 * r, 0x30 + r, rows[r]);
+  Player *player = Player::GetInstance();
+  player->OnStartButton(PM_SONG, 0, false, 0);
+  pulse(600);
+  player->Stop();
+  printf("played:\n");
+  printPlayed();
+  expect(gOut->buffers_ > 0 && gOut->audible_ == 0, "silent");
+
+  printf("instrument screen on 95\n");
+  LabWindow *win = new LabWindow(*new LabWindowImp());
+  vd->currentInstrument_ = 0x95;
+  InstrumentView *iv = new InstrumentView(*win, vd);
+  iv->OnFocus();
+  I_Instrument *u95 = b->GetInstrument(0x95);
+  UIIntVarField *field = (UIIntVarField *)iv->GetFocus();
+  std::string shown = field ? field->GetVariable().GetString() : "(no field)";
+  snprintf(line, sizeof(line), "only the type field, focused: \"type: %s\"", shown.c_str());
+  expect(focusID(iv) == IVF_TYPE && iv->T_SimpleList<UIField>::Size() == 1 && shown == "FutureSy (unknown)", line);
+  press(iv, EPBM_A, EPBM_RIGHT);
+  press(iv, EPBM_A, EPBM_LEFT);
+  expect(b->GetInstrument(0x95) == u95, "A+RIGHT, A+LEFT change nothing");
+
+  CommandContext cc(CL_PHRASE, 0x95);
+  expectCells(b, cc, "phrase, unknown 95", 7);
+  expectStatus(b, cc, I_CMD_VOLM, "not for I95 FutureSy");
+  expectStatus(b, cc, I_CMD_KILL, "I95 FutureSy");
+
+  int c = b->Clone(0x95);
+  snprintf(line, sizeof(line), "clone of 95 in %02X, type name %s", c, b->GetTypeName(c));
+  expect(c == 0x03 && !strcmp(b->GetTypeName(c), "FutureSy"), line);
+  p->PurgeInstruments(false);
+  same = true;
+  for (int k = 0; k < 5; k++) same = same && !b->IsSlotEmpty(gUnknownSlots[k]);
+  expect(same && !b->IsSlotEmpty(0x03), "Compact keeps them, played or not (B0 and the clone in 03 aren't)");
+
+  press(iv, EPBM_B, EPBM_A);
+  expect(b->GetInstrument(0x95) == u95, "B,A only asks");
+  iv->OnClearSlot(true);
+  expect(b->IsSlotEmpty(0x95) && b->FirstEmpty() == 0x04, "Yes empties 95");
+  shown = iv->GetFocus() ? ((UIIntVarField *)iv->GetFocus())->GetVariable().GetString() : "(no field)";
+  snprintf(line, sizeof(line), "the screen shows \"type: %s\"", shown.c_str());
+  expect(shown == "--", line);
+
+  saved = saveBank(b, out);
+  expect(!findEntry(saved, 0x95) && savedAsLoaded(saved, 0x03, 0x95) && savedAsLoaded(saved, 0xA0, 0xA0),
+         "saved again: no 95, the clone in 03 is 95's entry, A0 unchanged");
+}
+#endif
+
 // Channel 0 plays one note with a column 1 command whose parameter has low
 // nibble 0, and DLAY dd in command column 2. Returns the pulse at which the
 // note starts
@@ -1683,12 +1852,13 @@ static void modeDlay() {
 static void modePlay(const char *dir, const char *scenario) {
   std::string sc = scenario;
   if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay" && sc != "flows" && sc != "types" &&
-      sc != "resolve" && sc != "fields")
+      sc != "resolve" && sc != "fields" && sc != "unknown")
     die("unknown scenario ", scenario);
 #ifndef SL_FORK
-  if (sc == "flows" || sc == "types" || sc == "resolve" || sc == "fields")
-    die("flows, types, resolve and fields scenarios: fork only");
+  if (sc == "flows" || sc == "types" || sc == "resolve" || sc == "fields" || sc == "unknown")
+    die("flows, types, resolve, fields and unknown scenarios: fork only");
 #else
+  if (sc == "unknown") addUnknownEntries(dir);
   if (sc == "types") {
     // Before the project exists: MidiInstrument keeps the first service it sees
     MidiService::Install(new LabMidi());
@@ -1741,6 +1911,11 @@ static void modePlay(const char *dir, const char *scenario) {
     if (gFailed) die("fields scenario: checks failed");
     return;
   }
+  if (sc == "unknown") {
+    modeUnknown(project, viewData);
+    if (gFailed) die("unknown scenario: checks failed");
+    return;
+  }
 #endif
   player->OnStartButton(PM_SONG, 0, false, 0);
   if (sc == "range") {
@@ -1762,7 +1937,7 @@ int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: slot_lab dump|mem <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
                     "       | gen basic|clones|tables <projdir> | lz <in> <out>\n"
-                    "       | play <projdir> range|clone|view|dlay|flows|types|resolve|fields\n");
+                    "       | play <projdir> range|clone|view|dlay|flows|types|resolve|fields|unknown\n");
     return 2;
   }
   std::string mode = argv[1];

@@ -42,9 +42,11 @@ private:
 	Project *project_ ;
 	FourCC lastFocusID_ ;
 	I_Instrument *current_ ;
-	// The type field's list: "--" (empty), then the registry's types in
-	// table order
-	const char *typeNames_[IT_LAST+1] ;
+	// The type field's list: "--" (empty), the registry's types in table
+	// order, then unknownType_
+	const char *typeNames_[IT_LAST+2] ;
+	// The name of the slot's entry when this build doesn't know its type
+	char unknownType_[24] ;
 	Variable typeVar_ ;
 	// What the type field created in pickSlot_ during the current A hold.
 	// While A stays down, further A+arrows may replace it: nothing has been

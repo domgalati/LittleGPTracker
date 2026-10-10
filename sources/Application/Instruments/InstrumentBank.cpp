@@ -59,6 +59,26 @@ bool InstrumentBank::IsSlotEmpty(int i) {
 	return (i<0)||(i>=MAX_INSTRUMENT_COUNT)||(!instrument_[i]) ;
 } ;
 
+// Every instrument in a slot has a registry row, except the ones that keep
+// an entry of an unknown type
+UnknownInstrument *InstrumentBank::getUnknown(int i) {
+	if ((IsSlotEmpty(i))||(InstrumentTypes::Get(instrument_[i]->GetType()))) {
+		return 0 ;
+	}
+	return (UnknownInstrument *)instrument_[i] ;
+} ;
+
+const char *InstrumentBank::GetTypeName(int i) {
+	if (IsSlotEmpty(i)) {
+		return 0 ;
+	}
+	UnknownInstrument *unknown=getUnknown(i) ;
+	if (unknown) {
+		return unknown->GetTypeName() ;
+	}
+	return InstrumentTypes::Get(instrument_[i]->GetType())->uiName ;
+} ;
+
 void InstrumentBank::SaveContent(TiXmlNode *node) {
 	TiXmlElement *element=(TiXmlElement *)node ;
 	element->SetAttribute("LAYOUT",INSTRUMENT_BANK_LAYOUT) ;
@@ -66,10 +86,18 @@ void InstrumentBank::SaveContent(TiXmlNode *node) {
 	for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {
 
 		I_Instrument *instr=instrument_[i] ;
+		hex2char(i,hex) ;
+		// An entry of an unknown type goes back as it came, in this slot
+		UnknownInstrument *unknown=getUnknown(i) ;
+		if (unknown) {
+			TiXmlElement data(unknown->GetEntry()) ;
+			data.SetAttribute("ID",hex) ;
+			node->InsertEndChild(data) ;
+			continue ;
+		}
 		// A sample slot without a sample isn't written: it loads as empty
 		if ((instr)&&(!instr->IsEmpty())) {
 			TiXmlElement data("INSTRUMENT") ;
-			hex2char(i,hex) ;
 			data.SetAttribute("ID",hex) ;
 			data.SetAttribute("TYPE",InstrumentTypes::Get(instr->GetType())->saveName) ;
 
@@ -124,8 +152,10 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
         I_Instrument *instr=instrument_[id] ;
 				if (!info) {
 					// Unknown type (e.g. saved by a newer build): the slot
-					// stays as it is (empty), params skipped
-					Trace::Error("Unknown instrument type '%s' for instrument %s, leaving slot empty",instype?instype:"(none)",hexid) ;
+					// keeps the entry, to save it back unchanged. It plays
+					// nothing
+					Trace::Error("Unknown instrument type '%s' for instrument %s, kept as it is",instype?instype:"(none)",hexid) ;
+					replace(id,new UnknownInstrument(*current)) ;
 					instr=0 ;
 				} else if ((!instr)||(instr->GetType()!=info->type)) {
 					instr=info->create(id) ;
@@ -257,6 +287,13 @@ unsigned short InstrumentBank::Clone(unsigned short i) {
 	if (next==NO_MORE_INSTRUMENT) 
   {
 		return NO_MORE_INSTRUMENT ;
+	}
+
+	// An entry of an unknown type is copied as it is
+	UnknownInstrument *unknown=getUnknown(i) ;
+	if (unknown) {
+		replace(next,new UnknownInstrument(unknown->GetEntry())) ;
+		return next ;
 	}
 
 	I_Instrument *src=instrument_[i] ;
