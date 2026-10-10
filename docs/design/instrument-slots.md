@@ -8,11 +8,12 @@ Goals:
 - Instrument types become modules registered in one place, so a new type needs minimal plumbing.
 - Every instrument slot starts empty and the user picks a type per slot. Any mix of types can fill the whole range.
 - The command popup knows which commands apply to the instrument a row will play.
-- Project files saved by upstream LittleGPTracker load unchanged: djdiskmachine/LittleGPTracker and, where practical, Mdashdotdashn/LittleGPTracker (both use the same slot layout).
+- Project files saved by upstream LittleGPTracker (djdiskmachine/LittleGPTracker) load unchanged, including the older files it loads.
 
 Non-goals (decided by the owner):
 - Projects saved by earlier builds of this fork (including PIGTAIL in slots 0x90-0x9F) need no support. They may break.
 - Projects saved by this build don't need to load in upstream or older builds. Nobody will open them there.
+- Mdashdotdashn/LittleGPTracker 1.3 saves (`VERSION="1.3"`) need no support (decided 2026-10-09). They share the slot layout, so they may well load, but nothing tests or guarantees it.
 
 ## 2. Decisions
 
@@ -129,7 +130,7 @@ Threading: button handlers run under the mixer lock (`AppWindow::onEvent`, `AppW
 
 ### 6.1 What an upstream project file contains, and where each part goes
 
-Both upstreams use 00-7F Sample, 80-8F MIDI, `MAX_INSTRUMENT_COUNT` = 0x90, write a TYPE on every entry and always write all MIDI entries (`MidiInstrument::IsEmpty()` returns false since the 2014 import `c712f0a`). Mdashdotdashn's files say `VERSION="1.3"`; djdiskmachine's say `"1"`.
+Upstream uses 00-7F Sample, 80-8F MIDI, `MAX_INSTRUMENT_COUNT` = 0x90, writes a TYPE on every entry and always writes all MIDI entries (`MidiInstrument::IsEmpty()` returns false since the 2014 import `c712f0a`). Its files say `VERSION="1"`.
 
 | In the file | Slot-dependent? | Maps to |
 |---|---|---|
@@ -230,7 +231,7 @@ One stage per session; commit at each working stage (CLAUDE.md workflow rules). 
 
 | Done | Stage | Change | How to verify |
 |---|---|---|---|
-| [x] | 0 | Tooling: `tools/slot_lab` harness (Appendix A methods): dump slot → type → parameters and the slots phrases reference; load, save, diff. Build upstream/master and `c712f0a` (stand-in for Mdashdotdashn) in a scratch export, with a slot_lab variant linked against upstream's objects. Fixtures in `tools/slot_lab/fixtures/` (section 11) | Baseline dumps of every fixture from upstream's loader |
+| [x] | 0 | Tooling: `tools/slot_lab` harness (Appendix A methods): dump slot → type → parameters and the slots phrases reference; load, save, diff. Build upstream/master in a scratch export, with a slot_lab variant linked against upstream's objects. Fixtures in `tools/slot_lab/fixtures/` (section 11) | Baseline dumps of every fixture from upstream's loader |
 | [ ] | 1 | Safety only, no behaviour change: bounds-checked `GetInstrument` with the empty stand-in, the replace routine (5.3) used by Clone, the InstrumentView observer fix | ASan run with phrase bytes A0-FE and clone-after-play; fixture dumps unchanged; owner plays a project |
 | [ ] | 2 | Registry refactor, no behaviour change: replace `InstrumentTypeData` and the three type switches and the constructor ranges | Warning-free build; dumps and saved XML byte-identical to stage 1; `pt_lab` ident, init, audit unchanged |
 | [ ] | 3 | Empty slots, 00-FE, load/save rules (6.2, 6.3), A,A, Clone, Import, header, Compact, `LoadFirstGen` deleted, pool cap decoupled, pt_lab updated | Every upstream fixture loads to the same dump as upstream's loader, except sampleless unreferenced Sample slots, which are now empty; saving an unchanged fixture reproduces it apart from top-level node order and `LAYOUT="2"`; memory probe; owner loads upstream projects and listens; A,A, clone and import flows |
@@ -257,28 +258,25 @@ This repo has no upstream example projects (only a `Kick5.WAV` in an old `lgpt_A
 
 All Sample entries are in 00-7F and all MIDI entries in 80-8F. No phrase references a MIDI slot, and every referenced slot has an entry, so the 80-8F safety net (6.2 step 2) isn't exercised.
 
-**In this repo:** `tools/slot_lab/fixtures/`, labelled in its README. Generated through upstream's own model and save code (`up-basic`, `up-clones` with MIDI clones in 02 and 03, `up-tables`) and through `c712f0a`'s (`y2014-basic`); hand-made from `up-basic`: no TYPE and missing MIDI entries, VERSION 0.37, no VERSION, a sample name missing from `samples/`, phrase bytes 90/A0/FE, and an LZ save. VERSION below 130 has no fixture of its own: djdiskmachine's `VERSION="1"` already parses as 100, and its only effect needs `LEGACYDOWNSAMPLING` in `config.xml`, which slot_lab doesn't read.
+**In this repo:** `tools/slot_lab/fixtures/`, labelled in its README. Generated through upstream's own model and save code (`up-basic`, `up-clones` with MIDI clones in 02 and 03, `up-tables`), and `owner-midi`, a real save from the owner (MIDI 80 and 83 played, a MIDI clone in 00); hand-made from `up-basic`: no TYPE and missing MIDI entries, VERSION 0.37, no VERSION, a sample name missing from `samples/`, phrase bytes 90/A0/FE, and an LZ save. VERSION below 130 has no fixture of its own: djdiskmachine's `VERSION="1"` already parses as 100, and its only effect needs `LEGACYDOWNSAMPLING` in `config.xml`, which slot_lab doesn't read.
 
 Still missing as real files (the stand-ins are in brackets):
-1. Mdashdotdashn 1.3 saves and anything older (`y2014-basic`, `hand-notype`).
+1. Saves older than 2014, with entries that have no TYPE (`hand-notype`).
 2. A compressed (LZ) save, if any build wrote one (`hand-lz`; the layout is a guess).
 3. Any first-generation binary saves, if they exist.
 
-A real MIDI save now exists: `owner-midi`, saved by the owner with the upstream 1.6.0-bacon20 release (MIDI 80 and 83 played, a MIDI clone in 00).
-
 **Stage 0 results** (2026-10-09; `tools/slot_lab/baseline/`):
-- Built: upstream `c7258ff` (upstream/master that day, pinned in the Makefile) with its own X64 Makefile; `c712f0a` as a model-only archive, because its Linux builds need SDL 1.2 (two build-only shims, see `tools/slot_lab/y2014.mk`).
-- All 17 fixtures (11 in the repo, 6 from lgpt-resources) load in all three trees. For upstream and the fork, saving and loading again gives the same dump.
+- Built: upstream `c7258ff` (upstream/master that day, pinned in the Makefile) with its own X64 Makefile.
+- All 16 fixtures (10 in the repo, 6 from lgpt-resources) load in both trees, and saving and loading again gives the same dump.
 - The fork's dumps equal upstream's in every fixture except the slot count and slots 90-9F (PIGTAIL). This is the comparison stage 3 starts from.
-- A Sample entry naming a file that isn't in `samples/` loads as the first pool sample (index 0) in upstream and the fork, with no message (`hand-missing-sample`); `c712f0a` leaves the slot sampleless. Open for the owner: whether stage 3 keeps that or loads such a slot without a sample.
-- Missing MIDI entries in 80-8F load as upstream's constructor defaults, channel slot-0x80 (`hand-notype`), which is what rule 6.2 step 2 reproduces. VERSION 0.37 swaps volume and crushdrive where crush isn't 16; no VERSION also sets table ratio 2. `hand-lz` loads the same as `up-basic` in all three trees. Upstream keeps phrase bytes 90+ as loaded; the fork plays 90 as its PIGTAIL slot.
-- `c712f0a` reads upstream's files the same apart from parameters it predates. It rejects 4 of the 21 WAVs in `lgpt_Luce-COMPSENTRY` ("Bad WAV/fmt format"), so slots 07-09 lose their sample and its save drops their settings; list values it can't match keep index -1 where upstream uses 0.
+- A Sample entry naming a file that isn't in `samples/` loads as the first pool sample (index 0) in upstream and the fork, with no message (`hand-missing-sample`). Open for the owner: whether stage 3 keeps that or loads such a slot without a sample.
+- Missing MIDI entries in 80-8F load as upstream's constructor defaults, channel slot-0x80 (`hand-notype`), which is what rule 6.2 step 2 reproduces. VERSION 0.37 swaps volume and crushdrive where crush isn't 16; no VERSION also sets table ratio 2. `hand-lz` loads the same as `up-basic`. Upstream keeps phrase bytes 90+ as loaded; the fork plays 90 as its PIGTAIL slot.
+- slot_lab first also built `c712f0a`'s model code as a stand-in for Mdashdotdashn 1.3. It was removed the same day, when 1.3 support was dropped.
 - Harness differences from the app: no MIDI devices (`DummyMidi`), so the project's `midi` value saves as `(null)`; and the Mixer singleton exists before loading (see Appendix B).
 
 ## 12. Not verified
 
 - Upstream's unknown-TYPE use-after-free is from reading its code; no fixture has an unknown TYPE. The rest of upstream's load behaviour above was run (stage 0).
-- Mdashdotdashn's code: four files read through the GitHub API, not built. slot_lab builds `c712f0a`'s model code as a stand-in (it writes `VERSION="1.3"` too).
 - Files older than 2014: whether MIDI entries were ever missing (the only reason for rule 6.2 step 2). Compressed saves: which builds wrote them is unknown; the loader reads a file made with this repo's `LZ_Compress`.
 - 32-bit memory numbers are derived, not measured on hardware. Bittboy (musl), Dingoo and RS-97 (uClibc, MIPS) and Caanoo (old GCC strings) may differ by about ±20%.
 - The GUI hasn't been run for any of this; UI statements are from reading the code.

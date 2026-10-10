@@ -7,22 +7,20 @@
 #             cd projects && make PLATFORM=X64
 #   upstream  djdiskmachine $(UPSTREAM), exported to build/upstream and built
 #             with its own X64 Makefile (~40 s the first time)
-#   y2014     the 2014 import $(Y2014), stand-in for Mdashdotdashn's 1.3
-#             (same VERSION="1.3", same loader). Model sources only; see y2014.mk
 #
 # From tools/slot_lab:
 #   make check       fork dumps and resaves of every fixture, diffed against
 #                    baseline/$(REF) (default REF=fork; REF=upstream compares
 #                    with upstream's loader). Exits 1 on any difference
 #   make baseline    regenerate baseline/<tree>/ for BASELINE_TREES (default
-#                    all three) and check that each tree's resave loads back
+#                    both) and check that each tree's resave loads back
 #                    to the same dump. baseline/fork is the reference for
 #                    stages that must not change behaviour: regenerate it on
 #                    purpose only (make baseline BASELINE_TREES=upstream,
 #                    or make baseline-upstream)
 #   make fixtures    regenerate the generated and hand-made fixtures. Changes
 #                    the inputs: only when a fixture's definition changes
-#   make trees       build the three binaries
+#   make trees       build both binaries
 #
 # Per fixture and tree: <name>.dump (slot_lab dump) and <name>.resave.xml
 # (the fixture loaded and saved again by that tree). Dump lines starting
@@ -39,9 +37,8 @@
 ROOT     := $(abspath ../..)
 BUILD    := build
 UPSTREAM := c7258ff
-Y2014    := c712f0a
 REF      ?= fork
-BASELINE_TREES ?= upstream y2014 fork
+BASELINE_TREES ?= upstream fork
 RESOURCES ?= $(HOME)/lgpt-resources
 RES_PIN  := 9624b43
 SHELL    := /bin/bash
@@ -56,14 +53,13 @@ SDL_INC  := $(shell pkg-config sdl2 --cflags)
 
 FORK_OBJDIR := $(ROOT)/projects/buildX64
 UP_TREE     := $(BUILD)/upstream
-Y14_TREE    := $(BUILD)/y2014
 
 FIXTURES := $(sort $(patsubst fixtures/%/lgptsav.dat,%,$(wildcard fixtures/*/lgptsav.dat)))
 RES_PROJ := $(sort $(patsubst $(RESOURCES)/%/lgptsav.dat,%,$(wildcard $(RESOURCES)/lgpt_*/lgptsav.dat)))
 # name=directory pairs
 ALL      := $(foreach f,$(FIXTURES),$(f)=$(CURDIR)/fixtures/$(f)) \
             $(foreach p,$(RES_PROJ),res-$(p)=$(RESOURCES)/$(p))
-TREES    := fork upstream y2014
+TREES    := fork upstream
 
 .PHONY: trees check baseline $(addprefix baseline-,$(TREES)) fixtures check-objs clean
 
@@ -96,23 +92,6 @@ $(BUILD)/slot_lab_upstream: slot_lab.cpp $(UP_TREE)/.built
 	@echo "link $@"
 	@$(CXX) -o $@ $(UP_TREE)/slot_lab.o $(UP_TREE)/DummyMidi.o \
 	  $(filter-out %/LINUXMain.o,$(wildcard $(UP_TREE)/projects/buildX64/*.o)) $(LIBS)
-
-$(Y14_TREE)/.exported:
-	rm -rf $(Y14_TREE) && mkdir -p $(Y14_TREE)/shim/SDL
-	git -C $(ROOT) archive $(Y2014) sources | tar -x -C $(Y14_TREE)
-	echo '#include <SDL.h>' > $(Y14_TREE)/shim/SDL/SDL.h
-	sed -i 's|^\(\s*\)#error <datatype.h>: \(unsigned \)\?long is out of range!|\1/* slot_lab: removed, see y2014.mk */|' \
-	  $(Y14_TREE)/sources/Externals/Soundfont/DATATYPE.H
-	test $$(grep -c 'slot_lab: removed' $(Y14_TREE)/sources/Externals/Soundfont/DATATYPE.H) = 2
-	touch $@
-
-$(Y14_TREE)/liby2014.a: $(Y14_TREE)/.exported
-	$(MAKE) -f y2014.mk TREE=$(Y14_TREE)
-
-$(BUILD)/slot_lab_y2014: slot_lab.cpp $(Y14_TREE)/liby2014.a
-	$(CXX) $(CXXFLAGS) -fpermissive -Wno-write-strings -DCPP_MEMORY -D_64BIT -DSL_Y2014 -DSL_TREE='"y2014 $(Y2014)"' \
-	  -I$(Y14_TREE)/shim $(SDL_INC) -I$(Y14_TREE)/sources -c slot_lab.cpp -o $(Y14_TREE)/slot_lab.o
-	$(CXX) -o $@ $(Y14_TREE)/slot_lab.o $(Y14_TREE)/liby2014.a $(LIBS)
 
 # ------------------------------------------------------------- runs
 
@@ -159,12 +138,10 @@ check: $(BUILD)/slot_lab_fork
 
 GEN_UP := basic clones tables
 
-fixtures: $(BUILD)/slot_lab_upstream $(BUILD)/slot_lab_y2014
+fixtures: $(BUILD)/slot_lab_upstream
 	mkdir -p fixtures
 	for n in $(GEN_UP); do rm -rf fixtures/up-$$n; \
 	  $(BUILD)/slot_lab_upstream gen $$n fixtures/up-$$n 2> $(BUILD)/gen-up-$$n.log || { tail $(BUILD)/gen-up-$$n.log; exit 1; }; done
-	rm -rf fixtures/y2014-basic
-	$(BUILD)/slot_lab_y2014 gen basic fixtures/y2014-basic 2> $(BUILD)/gen-y2014-basic.log || { tail $(BUILD)/gen-y2014-basic.log; exit 1; }
 	python3 -I handmade.py fixtures
 	rm -rf fixtures/hand-lz; mkdir -p fixtures/hand-lz; cp -r fixtures/up-basic/samples fixtures/hand-lz/
 	$(BUILD)/slot_lab_upstream lz fixtures/up-basic/lgptsav.dat fixtures/hand-lz/lgptsav.dat

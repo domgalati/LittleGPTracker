@@ -1,10 +1,9 @@
 // slot_lab: load/save harness for instrument slots and project files.
 //
-// One source, built three times (see Makefile), each time linked against one
+// One source, built twice (see Makefile), each time linked against one
 // tree's own objects, so a dump shows what that tree's loader makes of a file:
 //   SL_FORK     this repository (projects/buildX64)
 //   SL_UPSTREAM djdiskmachine/LittleGPTracker, pinned commit
-//   SL_Y2014    the 2014 import c712f0a, stand-in for Mdashdotdashn's 1.3
 // SL_TREE names the tree in the dump header.
 //
 // Modes:
@@ -60,8 +59,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/stat.h>
-#include <dirent.h>
-#include <strings.h>
 #include <sys/time.h>
 #include <unistd.h>
 #include <string>
@@ -119,9 +116,7 @@ static void install() {
   AudioSettings st;
   st.bufferSize_ = 1024;
   st.preBufferCount_ = 0;
-#ifndef SL_Y2014
   st.sampleRate_ = 44100;
-#endif
   Audio::Install(new LabAudio(st));
   // No MIDI devices, so the project's "midi" variable doesn't depend on the host
   MidiService::Install(new DummyMidi());
@@ -140,26 +135,12 @@ static unsigned int gPoolResult = 0;
 // load in a session skips <MIXER>; later loads restore it, as here.
 static Project *loadProject(const char *dir) {
   std::string root = absPath(dir);
-#ifdef SL_Y2014
-  // The y2014 build's SoundFont code isn't 64-bit safe (see y2014.mk)
-  if (DIR *d = opendir((root + "/samples").c_str())) {
-    while (struct dirent *e = readdir(d)) {
-      size_t n = strlen(e->d_name);
-      if (n > 4 && !strcasecmp(e->d_name + n - 4, ".sf2")) die("y2014 build can't load .sf2 files: ", e->d_name);
-    }
-    closedir(d);
-  }
-#endif
   PersistencyService *persist = PersistencyService::GetInstance();
   Mixer::GetInstance();
   TablePlayback::Reset();
   Path::SetAlias("project", root.c_str());
   Path::SetAlias("samples", "project:samples");
-#ifdef SL_Y2014
-  SamplePool::GetInstance()->Load();  // returns void in 2014
-#else
   gPoolResult = SamplePool::GetInstance()->Load();
-#endif
   Project *project = new Project();
   gLoaded = persist->Load();
   if (!gLoaded) project->GetInstrumentBank()->AssignDefaults();
@@ -319,14 +300,12 @@ static void modeDump(const char *dir) {
   Mixer *mx = Mixer::GetInstance();
   printf("mixer bus");
   for (int i = 0; i < SONG_CHANNEL_COUNT; i++) printf(" %d", mx->GetBus(i));
-#ifndef SL_Y2014
   printf(" vol");
   for (int i = 0; i < SONG_CHANNEL_COUNT; i++) printf(" %02X", mx->GetChannelVolume(i));
   printf(" hpf");
   for (int i = 0; i < SONG_CHANNEL_COUNT; i++) printf(" %d", mx->GetChannelHPF(i));
   printf(" lpf");
   for (int i = 0; i < SONG_CHANNEL_COUNT; i++) printf(" %d", mx->GetChannelLPF(i));
-#endif
   printf("\n");
 }
 
@@ -530,9 +509,7 @@ static void genTables(Project *p) {
   th->SetUsed(0x05);
   Table &t10 = th->GetTable(0x10);
   t10.cmd1_[0] = I_CMD_MDCC; t10.param1_[0] = 0x0740;
-#ifdef I_CMD_MVEL
   t10.cmd1_[1] = I_CMD_MVEL; t10.param1_[1] = 0x0060;
-#endif
   th->SetUsed(0x10);
   unsigned char *g = Groove::GetInstance()->GetGrooveData(1);
   g[0] = 8; g[1] = 4;
@@ -542,13 +519,11 @@ static void genTables(Project *p) {
   setRow(s, 0x00, 12, 0x30, 0x02, I_CMD_TABL, 0x0010);
   setChain(s, 0x00, 0, 0x00);
   setSong(s, 0, 0, 0x00);
-#ifndef SL_Y2014  // the 2014 Mixer has no setters and saves nothing
   Mixer *mx = Mixer::GetInstance();
   mx->SetBus(1, 1);
   mx->SetChannelVolume(0, 0xC0);
   mx->SetChannelHPF(1, 1);
   mx->SetChannelLPF(2, 4000);
-#endif
 }
 
 static void modeGen(const char *name, const char *dir) {
