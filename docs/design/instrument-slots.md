@@ -284,7 +284,8 @@ Riskiest: stage 4. It is the only step that frees objects the audio path holds r
   - Clean X64 build: 210 warnings against stage 2's 212 the same day. The 2 gone were in `LoadFirstGen`; no new ones.
   - The app boots headless (SDL dummy drivers) with `up-basic` auto-loaded, and with a project folder that has samples but no save (the `AssignDefaults` path); each ran 5 s without a crash. Nothing on screen was checked.
 - Found: `ViewData::playMode_` is never initialised (Appendix B). slot_lab's flows scenario sets it.
-- Not run: the GUI. The owner's checks for this stage: load upstream projects and listen; A,A, clone (LT+(B,A)) and sample import in the app; Compact.
+- Not run by the agent: the GUI. The owner's checks for this stage: load upstream projects and listen; A,A, clone (LT+(B,A)) and sample import in the app; Compact.
+- Owner's GUI test (2026-10-10, X64 build of `37cd749` in `~/lgpt-run`): all checks passed on the six lgpt-resources projects and copies of `up-basic`, `up-clones`, `up-tables`, `owner-midi`, `hand-notype` and `hand-midi-notype`. Seen: A,A gives an empty slot (not a sampleless Sample), and clones start at the lowest empty slot (00 when it's empty). The checklist covered listening against the stage 2 binary, save and reload, MIDI channels, clone and Compact during playback, imports, empty slots in phrases and on the instrument screen, the FE wrap, and the fork-era PIGTAIL projects. Emptying a referenced 80-8F slot on screen and reloading it waits for stage 4 (no way to empty a MIDI slot yet); slot_lab covers that rule.
 
 ## 11. Fixtures
 
