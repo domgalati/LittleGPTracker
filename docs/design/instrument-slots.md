@@ -306,7 +306,7 @@ Still missing as real files (the stand-ins are in brackets):
 ## Appendix B: unrelated bugs found while surveying
 
 - `getHelpLegend` (`HelpLegend.h:8`) returns `new std::string[3]` that no caller frees: leaks on every redraw with the cursor on a command and in the popup.
-- `Player::updatePhrasePos` (`Player.cpp:801`): DLAY in command column 2 reads PARAM1.
+- `Player::updatePhrasePos` (`Player.cpp:801`): DLAY in command column 2 read PARAM1. Fixed on branch `fix/pre-stage2` (upstream still has it); slot_lab's dlay scenario checks it.
 - MIDI VOLM with `aa` ≠ 00 sends CC values above 127.
 - `PersistencyService::Load` parsed the file buffer without a terminating NUL (`PersistencyService.cpp:46`, `:53`), so TinyXML read past the end of the heap block until it met a zero byte: a heap-buffer-overflow under ASan for every plain-XML fixture. Fixed on branch `fix/pre-stage2`: both the read buffer and the LZ output buffer get a NUL (the LZ part from reading the code; slot_lab's LZ fixtures contain their own NUL). Still open: an LZ file whose stored length is smaller than its data overflows the output buffer, and the error path leaks the read buffer.
 - `Player::updatePhrasePos` (`Player.cpp:793` and `:799`) reads `cmd1_`/`cmd2_` at phrase 0xFF for a channel without a phrase: song mode started on a row where a channel is empty, or on a chain row without a phrase. That's up to 16 entries past the arrays; a heap-buffer-overflow under ASan (slot_lab, 2026-10-09). Fixed on branch `fix/pre-stage2`: it returns early for phrase FF. slot_lab's clone scenario now starts with channels 2-7 empty, which reproduces the overflow before the fix.

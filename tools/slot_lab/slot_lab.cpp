@@ -26,7 +26,9 @@
 //                            (phrase bytes 90-FE), clone (Clone onto slots a
 //                            channel and a table still use), view (the
 //                            instrument screen's observers across slot
-//                            changes and a Clone; no drawing, no playback).
+//                            changes and a Clone; no drawing, no playback),
+//                            dlay (DLAY in command column 2 delays by its
+//                            own parameter).
 //                            Meant for the ASan build (make play)
 //
 // Trace output goes to stderr; results go to stdout.
@@ -830,9 +832,40 @@ static void modeView(Project *p) {
 }
 #endif
 
+// Channel 0 plays one note with a column 1 command whose parameter has low
+// nibble 0, and DLAY dd in command column 2. Returns the pulse at which the
+// note starts
+static int dlayStart(Song *s, int dd) {
+  if (dd < 0) setRow(s, 0xE0, 0, 0x30, 0x00, I_CMD_VOLM, 0x0080);
+  else setRow(s, 0xE0, 0, 0x30, 0x00, I_CMD_VOLM, 0x0080, I_CMD_DLAY, dd);
+  Player *player = Player::GetInstance();
+  player->OnStartButton(PM_SONG, 0, false, 0);
+  int start = -1;
+  for (int i = 0; i < 400 && start < 0; i++) {
+    pulse(1);
+    if (strcmp(player->GetPlayedNote(0), "  ")) start = i;
+  }
+  player->Stop();
+  return start;
+}
+
+// DLAY in command column 2 must delay by its own parameter: DLAY 05 by five
+// times what DLAY 01 does
+static void modeDlay() {
+  Song *s = gProject->song_;
+  clearSong(s);
+  clearChain(s, 0xE0);
+  clearPhrase(s, 0xE0);
+  setChain(s, 0xE0, 0, 0xE0);
+  for (int c = 0; c < SONG_CHANNEL_COUNT; c++) setSong(s, c, 0, 0xE0);
+  int none = dlayStart(s, -1), d1 = dlayStart(s, 1), d5 = dlayStart(s, 5);
+  printf("note starts at pulse %d without DLAY, %d with DLAY 01 in column 2, %d with DLAY 05\n", none, d1, d5);
+  if (d1 <= none || d5 - none != 5 * (d1 - none)) die("dlay: column 2 DLAY doesn't delay by its own parameter");
+}
+
 static void modePlay(const char *dir, const char *scenario) {
   std::string sc = scenario;
-  if (sc != "range" && sc != "clone" && sc != "view") die("unknown scenario ", scenario);
+  if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay") die("unknown scenario ", scenario);
   setvbuf(stdout, 0, _IONBF, 0);  // keep the output if a sanitizer aborts
   gOut = new LabAudioOut();
   Audio::GetInstance()->Insert(gOut);
@@ -848,11 +881,15 @@ static void modePlay(const char *dir, const char *scenario) {
 #endif
   }
   if (sc == "range") setupRange(project);
-  else setupClone(project);
+  else if (sc == "clone") setupClone(project);
   ViewData *viewData = new ViewData(project);
   Player *player = Player::GetInstance();
   if (!player->Init(project, viewData)) die("player init failed");
   printf("# slot_lab play %s, tree %s\n", scenario, SL_TREE);
+  if (sc == "dlay") {
+    modeDlay();
+    return;
+  }
   player->OnStartButton(PM_SONG, 0, false, 0);
   if (sc == "range") {
     pulse(3000);
@@ -873,7 +910,7 @@ int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: slot_lab dump <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
                     "       | gen basic|clones|tables <projdir> | lz <in> <out>\n"
-                    "       | play <projdir> range|clone|view\n");
+                    "       | play <projdir> range|clone|view|dlay\n");
     return 2;
   }
   std::string mode = argv[1];
