@@ -794,6 +794,11 @@ void Player::updatePhrasePos(int pos, int channel) {
 
     uchar phrase = viewData_->currentPlayPhrase_[channel];
 
+    // A channel without a phrase (FF) has no commands to look at
+    if (phrase == 0xFF) {
+        return;
+    }
+
     // Check both param colum 1 & 2
 
     FourCC cc = viewData_->song_->phrase_->cmd1_[phrase * 16 + pos];

@@ -689,7 +689,7 @@ static void setupClone(Project *p) {
   setVar(b->GetInstrument(0x04), SIP_SAMPLE, 2);
   setVar(b->GetInstrument(0x04), SIP_LOOPMODE, 1);
   clearSong(s);
-  for (int i = 0xE0; i < 0xE3; i++) {
+  for (int i = 0xE0; i < 0xE2; i++) {
     clearChain(s, i);
     clearPhrase(s, i);
     setChain(s, i, 0, i);
@@ -698,10 +698,9 @@ static void setupClone(Project *p) {
   for (int r = 2; r < 16; r += 2) setRow(s, 0xE0, r, 0x30, 0xFF);
   setRow(s, 0xE1, 0, 0x30, 0x04);
   for (int r = 4; r < 16; r += 4) setRow(s, 0xE1, r, 0x37, 0xFF);
-  // Channels 2-7 play the empty phrase E2: starting song mode on a channel
-  // without a phrase reads past the phrase arrays (Player::updatePhrasePos,
-  // a separate bug)
-  for (int c = 0; c < SONG_CHANNEL_COUNT; c++) setSong(s, c, 0, 0xE0 + (c < 2 ? c : 2));
+  // Channels 2-7 have no chain: song mode starts with them empty
+  setSong(s, 0, 0, 0xE0);
+  setSong(s, 1, 0, 0xE1);
 }
 
 #ifdef SL_FORK
