@@ -1,0 +1,318 @@
+# slot_lab dump, tree fork 0b84eab
+load ok, table ratio 1
+pool 0 (result 0):
+project tempo=138 master=100 pregain=100 softclip=Bypass [0] softclipGain=[unity] [0] wrap=false transpose=0 scale=None (Chromatic) [0] renderMode=Off [0] midi=(null) [0]
+slots A0
+I00 Midi, 1 rows in phrases 10
+    channel=0
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I01 Sample empty, defaults
+I02 Sample empty, defaults
+I03 Sample empty, defaults
+I04 Sample empty, defaults
+I05 Sample empty, defaults
+I06 Sample empty, defaults
+I07 Sample empty, defaults
+I08 Sample empty, defaults
+I09 Sample empty, defaults
+I0A Sample empty, defaults
+I0B Sample empty, defaults
+I0C Sample empty, defaults
+I0D Sample empty, defaults
+I0E Sample empty, defaults
+I0F Sample empty, defaults
+I10 Sample empty, defaults
+I11 Sample empty, defaults
+I12 Sample empty, defaults
+I13 Sample empty, defaults
+I14 Sample empty, defaults
+I15 Sample empty, defaults
+I16 Sample empty, defaults
+I17 Sample empty, defaults
+I18 Sample empty, defaults
+I19 Sample empty, defaults
+I1A Sample empty, defaults
+I1B Sample empty, defaults
+I1C Sample empty, defaults
+I1D Sample empty, defaults
+I1E Sample empty, defaults
+I1F Sample empty, defaults
+I20 Sample empty, defaults
+I21 Sample empty, defaults
+I22 Sample empty, defaults
+I23 Sample empty, defaults
+I24 Sample empty, defaults
+I25 Sample empty, defaults
+I26 Sample empty, defaults
+I27 Sample empty, defaults
+I28 Sample empty, defaults
+I29 Sample empty, defaults
+I2A Sample empty, defaults
+I2B Sample empty, defaults
+I2C Sample empty, defaults
+I2D Sample empty, defaults
+I2E Sample empty, defaults
+I2F Sample empty, defaults
+I30 Sample empty, defaults
+I31 Sample empty, defaults
+I32 Sample empty, defaults
+I33 Sample empty, defaults
+I34 Sample empty, defaults
+I35 Sample empty, defaults
+I36 Sample empty, defaults
+I37 Sample empty, defaults
+I38 Sample empty, defaults
+I39 Sample empty, defaults
+I3A Sample empty, defaults
+I3B Sample empty, defaults
+I3C Sample empty, defaults
+I3D Sample empty, defaults
+I3E Sample empty, defaults
+I3F Sample empty, defaults
+I40 Sample empty, defaults
+I41 Sample empty, defaults
+I42 Sample empty, defaults
+I43 Sample empty, defaults
+I44 Sample empty, defaults
+I45 Sample empty, defaults
+I46 Sample empty, defaults
+I47 Sample empty, defaults
+I48 Sample empty, defaults
+I49 Sample empty, defaults
+I4A Sample empty, defaults
+I4B Sample empty, defaults
+I4C Sample empty, defaults
+I4D Sample empty, defaults
+I4E Sample empty, defaults
+I4F Sample empty, defaults
+I50 Sample empty, defaults
+I51 Sample empty, defaults
+I52 Sample empty, defaults
+I53 Sample empty, defaults
+I54 Sample empty, defaults
+I55 Sample empty, defaults
+I56 Sample empty, defaults
+I57 Sample empty, defaults
+I58 Sample empty, defaults
+I59 Sample empty, defaults
+I5A Sample empty, defaults
+I5B Sample empty, defaults
+I5C Sample empty, defaults
+I5D Sample empty, defaults
+I5E Sample empty, defaults
+I5F Sample empty, defaults
+I60 Sample empty, defaults
+I61 Sample empty, defaults
+I62 Sample empty, defaults
+I63 Sample empty, defaults
+I64 Sample empty, defaults
+I65 Sample empty, defaults
+I66 Sample empty, defaults
+I67 Sample empty, defaults
+I68 Sample empty, defaults
+I69 Sample empty, defaults
+I6A Sample empty, defaults
+I6B Sample empty, defaults
+I6C Sample empty, defaults
+I6D Sample empty, defaults
+I6E Sample empty, defaults
+I6F Sample empty, defaults
+I70 Sample empty, defaults
+I71 Sample empty, defaults
+I72 Sample empty, defaults
+I73 Sample empty, defaults
+I74 Sample empty, defaults
+I75 Sample empty, defaults
+I76 Sample empty, defaults
+I77 Sample empty, defaults
+I78 Sample empty, defaults
+I79 Sample empty, defaults
+I7A Sample empty, defaults
+I7B Sample empty, defaults
+I7C Sample empty, defaults
+I7D Sample empty, defaults
+I7E Sample empty, defaults
+I7F Sample empty, defaults
+I80 Midi, 5 rows in phrases 10
+    channel=0
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I81 Midi
+    channel=1
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I82 Midi
+    channel=2
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I83 Midi, 3 rows in phrases 10
+    channel=13
+    note length=17
+    volume=222
+    table=-1
+    table automation=false
+I84 Midi
+    channel=4
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I85 Midi
+    channel=5
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I86 Midi
+    channel=6
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I87 Midi
+    channel=7
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I88 Midi
+    channel=8
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I89 Midi
+    channel=9
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I8A Midi
+    channel=10
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I8B Midi
+    channel=11
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I8C Midi
+    channel=12
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I8D Midi
+    channel=13
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I8E Midi
+    channel=14
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I8F Midi
+    channel=15
+    note length=0
+    volume=255
+    table=-1
+    table automation=false
+I90 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I91 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I92 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I93 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I94 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I95 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I96 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I97 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I98 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I99 Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I9A Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I9B Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I9C Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I9D Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I9E Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+I9F Pigtail
+    shape=csaw [0]
+    timbre=128
+    color=128
+    volume=64
+data song 7ffed52a chains e0cd61ba transposes 85d4b285
+data notes b3257a9b instruments 4cf736c3 cmd1 41949885 param1 5c7a1745 cmd2 41949885 param2 5c7a1745
+data tables 4c79ce8a grooves 1d8920e1
+mixer bus 0 1 2 3 4 5 6 7 vol FF FF FF FF FF FF FF FF hpf 0 0 0 0 0 0 0 0 lpf 0 0 0 0 0 0 0 0

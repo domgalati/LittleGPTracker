@@ -260,14 +260,15 @@ All Sample entries are in 00-7F and all MIDI entries in 80-8F. No phrase referen
 **In this repo:** `tools/slot_lab/fixtures/`, labelled in its README. Generated through upstream's own model and save code (`up-basic`, `up-clones` with MIDI clones in 02 and 03, `up-tables`) and through `c712f0a`'s (`y2014-basic`); hand-made from `up-basic`: no TYPE and missing MIDI entries, VERSION 0.37, no VERSION, a sample name missing from `samples/`, phrase bytes 90/A0/FE, and an LZ save. VERSION below 130 has no fixture of its own: djdiskmachine's `VERSION="1"` already parses as 100, and its only effect needs `LEGACYDOWNSAMPLING` in `config.xml`, which slot_lab doesn't read.
 
 Still missing as real files (the stand-ins are in brackets):
-1. A project that plays MIDI instruments, including a MIDI clone in 00-7F (`up-clones`).
-2. Mdashdotdashn 1.3 saves and anything older (`y2014-basic`, `hand-notype`).
-3. A compressed (LZ) save, if any build wrote one (`hand-lz`; the layout is a guess).
-4. Any first-generation binary saves, if they exist.
+1. Mdashdotdashn 1.3 saves and anything older (`y2014-basic`, `hand-notype`).
+2. A compressed (LZ) save, if any build wrote one (`hand-lz`; the layout is a guess).
+3. Any first-generation binary saves, if they exist.
+
+A real MIDI save now exists: `owner-midi`, saved by the owner with the upstream 1.6.0-bacon20 release (MIDI 80 and 83 played, a MIDI clone in 00).
 
 **Stage 0 results** (2026-10-09; `tools/slot_lab/baseline/`):
 - Built: upstream `c7258ff` (upstream/master that day, pinned in the Makefile) with its own X64 Makefile; `c712f0a` as a model-only archive, because its Linux builds need SDL 1.2 (two build-only shims, see `tools/slot_lab/y2014.mk`).
-- All 16 fixtures (10 in the repo, 6 from lgpt-resources) load in all three trees. For upstream and the fork, saving and loading again gives the same dump.
+- All 17 fixtures (11 in the repo, 6 from lgpt-resources) load in all three trees. For upstream and the fork, saving and loading again gives the same dump.
 - The fork's dumps equal upstream's in every fixture except the slot count and slots 90-9F (PIGTAIL). This is the comparison stage 3 starts from.
 - A Sample entry naming a file that isn't in `samples/` loads as the first pool sample (index 0) in upstream and the fork, with no message (`hand-missing-sample`); `c712f0a` leaves the slot sampleless. Open for the owner: whether stage 3 keeps that or loads such a slot without a sample.
 - Missing MIDI entries in 80-8F load as upstream's constructor defaults, channel slot-0x80 (`hand-notype`), which is what rule 6.2 step 2 reproduces. VERSION 0.37 swaps volume and crushdrive where crush isn't 16; no VERSION also sets table ratio 2. `hand-lz` loads the same as `up-basic` in all three trees. Upstream keeps phrase bytes 90+ as loaded; the fork plays 90 as its PIGTAIL slot.
