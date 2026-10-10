@@ -63,6 +63,7 @@ PIGTAIL's saved TYPE string (`"Pigtail"`) and shape names only need to stay stab
 | `AppWindow.cpp:345-354` | `AssignDefaults` for new projects, then `Init()` on every slot | Post-load step (6.2) goes after `persist->Load()` |
 | `SamplePool.h:10` | Pool size = `MAX_SAMPLEINSTRUMENT_COUNT` | Decouple; keep 128 |
 | `tools/pt_lab/pt_lab.cpp:580` | Uses `PIGTAIL_INSTRUMENT_BASE` | Create a PIGTAIL in a slot explicitly |
+| `tools/slot_lab/slot_lab.cpp` | Copies the model steps of `AppWindow::LoadProject`; dumps slots up to `MAX_INSTRUMENT_COUNT`; names types by enum | Stage 3: add the post-load step (6.2) and print empty slots as such |
 | `README.md:19`, `docs/wiki/What-is-LittlePiggyTracker.md:344`, `docs/wiki/quick_start_guide.md:31` | Types fixed per slot; MIDI clones can't be reverted; 128 slots | Update docs |
 
 Not affected: song and chain views, tables (index-based, global), the phrase save format, `CommandList`.
@@ -229,7 +230,7 @@ One stage per session; commit at each working stage (CLAUDE.md workflow rules). 
 
 | Done | Stage | Change | How to verify |
 |---|---|---|---|
-| [ ] | 0 | Tooling: `tools/slot_lab` harness (Appendix A methods): dump slot → type → parameters and the slots phrases reference; load, save, diff. Build upstream/master and `c712f0a` (stand-in for Mdashdotdashn) in a scratch export, with a slot_lab variant linked against upstream's objects. Fixtures in `tools/slot_lab/fixtures/` (section 11) | Baseline dumps of every fixture from upstream's loader |
+| [x] | 0 | Tooling: `tools/slot_lab` harness (Appendix A methods): dump slot → type → parameters and the slots phrases reference; load, save, diff. Build upstream/master and `c712f0a` (stand-in for Mdashdotdashn) in a scratch export, with a slot_lab variant linked against upstream's objects. Fixtures in `tools/slot_lab/fixtures/` (section 11) | Baseline dumps of every fixture from upstream's loader |
 | [ ] | 1 | Safety only, no behaviour change: bounds-checked `GetInstrument` with the empty stand-in, the replace routine (5.3) used by Clone, the InstrumentView observer fix | ASan run with phrase bytes A0-FE and clone-after-play; fixture dumps unchanged; owner plays a project |
 | [ ] | 2 | Registry refactor, no behaviour change: replace `InstrumentTypeData` and the three type switches and the constructor ranges | Warning-free build; dumps and saved XML byte-identical to stage 1; `pt_lab` ident, init, audit unchanged |
 | [ ] | 3 | Empty slots, 00-FE, load/save rules (6.2, 6.3), A,A, Clone, Import, header, Compact, `LoadFirstGen` deleted, pool cap decoupled, pt_lab updated | Every upstream fixture loads to the same dump as upstream's loader, except sampleless unreferenced Sample slots, which are now empty; saving an unchanged fixture reproduces it apart from top-level node order and `LAYOUT="2"`; memory probe; owner loads upstream projects and listens; A,A, clone and import flows |
@@ -256,19 +257,28 @@ This repo has no upstream example projects (only a `Kick5.WAV` in an old `lgpt_A
 
 All Sample entries are in 00-7F and all MIDI entries in 80-8F. No phrase references a MIDI slot, and every referenced slot has an entry, so the 80-8F safety net (6.2 step 2) isn't exercised.
 
-Still missing, to ask the owner for or hand-craft:
-1. A project that plays MIDI instruments, including a MIDI clone in 00-7F.
-2. Mdashdotdashn 1.3 saves (`VERSION="1.3"`) and anything older (entries with no TYPE).
-3. A compressed (LZ) save, if any build wrote one.
+**In this repo:** `tools/slot_lab/fixtures/`, labelled in its README. Generated through upstream's own model and save code (`up-basic`, `up-clones` with MIDI clones in 02 and 03, `up-tables`) and through `c712f0a`'s (`y2014-basic`); hand-made from `up-basic`: no TYPE and missing MIDI entries, VERSION 0.37, no VERSION, a sample name missing from `samples/`, phrase bytes 90/A0/FE, and an LZ save. VERSION below 130 has no fixture of its own: djdiskmachine's `VERSION="1"` already parses as 100, and its only effect needs `LEGACYDOWNSAMPLING` in `config.xml`, which slot_lab doesn't read.
+
+Still missing as real files (the stand-ins are in brackets):
+1. A project that plays MIDI instruments, including a MIDI clone in 00-7F (`up-clones`).
+2. Mdashdotdashn 1.3 saves and anything older (`y2014-basic`, `hand-notype`).
+3. A compressed (LZ) save, if any build wrote one (`hand-lz`; the layout is a guess).
 4. Any first-generation binary saves, if they exist.
 
-Generated: projects built and saved through upstream's own save code (slot_lab linked against upstream objects). Hand-crafted and labelled: entries with no TYPE, VERSION below 38 and below 130, phrase bytes 0x90+.
+**Stage 0 results** (2026-10-09; `tools/slot_lab/baseline/`):
+- Built: upstream `c7258ff` (upstream/master that day, pinned in the Makefile) with its own X64 Makefile; `c712f0a` as a model-only archive, because its Linux builds need SDL 1.2 (two build-only shims, see `tools/slot_lab/y2014.mk`).
+- All 16 fixtures (10 in the repo, 6 from lgpt-resources) load in all three trees. For upstream and the fork, saving and loading again gives the same dump.
+- The fork's dumps equal upstream's in every fixture except the slot count and slots 90-9F (PIGTAIL). This is the comparison stage 3 starts from.
+- A Sample entry naming a file that isn't in `samples/` loads as the first pool sample (index 0) in upstream and the fork, with no message (`hand-missing-sample`); `c712f0a` leaves the slot sampleless. Open for the owner: whether stage 3 keeps that or loads such a slot without a sample.
+- Missing MIDI entries in 80-8F load as upstream's constructor defaults, channel slot-0x80 (`hand-notype`), which is what rule 6.2 step 2 reproduces. VERSION 0.37 swaps volume and crushdrive where crush isn't 16; no VERSION also sets table ratio 2. `hand-lz` loads the same as `up-basic` in all three trees. Upstream keeps phrase bytes 90+ as loaded; the fork plays 90 as its PIGTAIL slot.
+- `c712f0a` reads upstream's files the same apart from parameters it predates. It rejects 4 of the 21 WAVs in `lgpt_Luce-COMPSENTRY` ("Bad WAV/fmt format"), so slots 07-09 lose their sample and its save drops their settings; list values it can't match keep index -1 where upstream uses 0.
+- Harness differences from the app: no MIDI devices (`DummyMidi`), so the project's `midi` value saves as `(null)`; and the Mixer singleton exists before loading (see Appendix B).
 
 ## 12. Not verified
 
-- Upstream load behaviour (including its unknown-TYPE use-after-free) is from reading its code; upstream hasn't been built here. The one load test run so far used this fork's loader.
-- Mdashdotdashn's code: four files read through the GitHub API, not built.
-- Files older than 2014: whether MIDI entries were ever missing (the only reason for rule 6.2 step 2). Compressed saves: which builds wrote them; untested.
+- Upstream's unknown-TYPE use-after-free is from reading its code; no fixture has an unknown TYPE. The rest of upstream's load behaviour above was run (stage 0).
+- Mdashdotdashn's code: four files read through the GitHub API, not built. slot_lab builds `c712f0a`'s model code as a stand-in (it writes `VERSION="1.3"` too).
+- Files older than 2014: whether MIDI entries were ever missing (the only reason for rule 6.2 step 2). Compressed saves: which builds wrote them is unknown; the loader reads a file made with this repo's `LZ_Compress`.
 - 32-bit memory numbers are derived, not measured on hardware. Bittboy (musl), Dingoo and RS-97 (uClibc, MIPS) and Caanoo (old GCC strings) may differ by about ±20%.
 - The GUI hasn't been run for any of this; UI statements are from reading the code.
 - Mixer lock coverage on the JACK, PSP and W32 audio paths.
@@ -278,10 +288,12 @@ Generated: projects built and saved through upstream's own save code (slot_lab l
 
 - Heap cost: a scratch program linked against `projects/buildX64/*.o` minus `LINUXMain.o` (same flags and libs as `tools/pt_lab/Makefile`), replacing global `operator new`/`delete` to count allocations and track live blocks, plus `mallinfo2()` deltas over 64 instances per type. Install `LINUXSystem`, `UnixFileSystem` and a test `Audio` as pt_lab does.
 - 32-bit layouts: compile the real headers with `g++ -m32 -malign-double -S` (an ARM EABI layout proxy) and read `sizeof` constants from the assembly. No 32-bit libs are needed: add `-isystem /usr/include/x86_64-linux-gnu/c++/13 -isystem /usr/include/x86_64-linux-gnu` and an empty `gnu/stubs-32.h`. The `-m64` run of the same file matched the runtime measurement exactly. Heap blocks were converted to 32-bit with glibc's 8-byte chunk rounding.
-- Loading a project in a harness: call `PersistencyService::GetInstance()` before `new Project()` (Persistent objects register with the service when constructed), install a MIDI service (`RTMidiService`) and `UnixProcessFactory` first, and set the `project` path alias.
+- Loading a project in a harness: call `PersistencyService::GetInstance()` before `new Project()` (Persistent objects register with the service when constructed), install a MIDI service (`RTMidiService`) and `UnixProcessFactory` first, and set the `project` path alias. `tools/slot_lab` does this with `DummyMidi`, so results don't depend on the host's MIDI devices.
 
 ## Appendix B: unrelated bugs found while surveying
 
 - `getHelpLegend` (`HelpLegend.h:8`) returns `new std::string[3]` that no caller frees: leaks on every redraw with the cursor on a command and in the popup.
 - `Player::updatePhrasePos` (`Player.cpp:801`): DLAY in command column 2 reads PARAM1.
 - MIDI VOLM with `aa` ≠ 00 sends CC values above 127.
+- From reading the code, not run: `PersistencyService::Load` parses the file buffer without a terminating NUL (`PersistencyService.cpp:46`, `:53`), so TinyXML reads past the end of the heap block until it meets a zero byte.
+- From reading the code, not run in the app: the `Mixer` singleton is created only by `MixerView` drawing, `PlayerMixer::Update` or `MixerService::SetPregain`, all after `persist->Load()` (`AppWindow.cpp:345`). If nothing created it earlier, the first project loaded in a session skips its `<MIXER>` node (bus, volume, HPF, LPF), and the next save writes defaults. slot_lab creates the Mixer before loading.
