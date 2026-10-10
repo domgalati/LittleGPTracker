@@ -1,4 +1,4 @@
-# slot_lab dump, tree fork 28ecca3
+# slot_lab dump, tree fork 17711c6
 load ok, table ratio 1
 pool 6 (result 0): guiro girl.wav guiro.wav looperman-garage-drum-loop.wav looperman-robosocks-garage-drums.wav modwub.wav nineh-pwm.wav
 project tempo=138 master=100 pregain=100 softclip=Bypass [0] softclipGain=[unity] [0] wrap=false transpose=0 scale=Adonal malakh [2] renderMode=Off [0] midi=(null) [0]

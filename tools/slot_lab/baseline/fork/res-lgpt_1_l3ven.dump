@@ -1,4 +1,4 @@
-# slot_lab dump, tree fork 28ecca3
+# slot_lab dump, tree fork 17711c6
 load ok, table ratio 1
 pool 10 (result 0): 909kick.wav Bang Pad.wav Connected Pad.wav SOUNDBOI.wav WHORUN.wav cw_amen_funk2.wav downramp.wav sawtooth.wav square.wav triangle.wav
 project tempo=160 master=72 pregain=130 softclip=Heavy [3] softclipGain=[unity] [0] wrap=false transpose=0 scale=None (Chromatic) [0] renderMode=Off [0] midi=(null) [0]

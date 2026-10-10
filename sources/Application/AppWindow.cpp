@@ -342,6 +342,12 @@ void AppWindow::LoadProject(const Path &p) {
 
     Project *project = new Project();
 
+    // The Mixer is a singleton that outlives projects. It must exist before
+    // loading, or the <MIXER> node isn't restored (and the next save writes
+    // defaults); and it starts from defaults, or a file without that node
+    // keeps the previous project's mixer
+    Mixer::GetInstance()->Clear();
+
     bool succeeded = persist->Load();
     if (!succeeded) {
         project->GetInstrumentBank()->AssignDefaults();

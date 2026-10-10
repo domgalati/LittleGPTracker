@@ -1,4 +1,4 @@
-# slot_lab dump, tree fork 28ecca3
+# slot_lab dump, tree fork 17711c6
 load ok, table ratio 1
 pool 3 (result 0): a_kick.wav b_snare.wav c_tone.wav
 project tempo=144 master=100 pregain=100 softclip=Bypass [0] softclipGain=[unity] [0] wrap=false transpose=0 scale=None (Chromatic) [0] renderMode=Off [0] midi=(null) [0]

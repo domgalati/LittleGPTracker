@@ -1,4 +1,4 @@
-# slot_lab dump, tree fork 28ecca3
+# slot_lab dump, tree fork 17711c6
 load ok, table ratio 1
 pool 21 (result 0): 808cb.wav 808cb_.wav 909Sd1.wav Sweet Pad.wav VVE1 Vocal Oneshots 247.wav VVE1 Vocal Oneshots 248.wav VVE1 Vocal Oneshots 249.wav VVE1 Vocal Oneshots 250.wav VVE1 Vocal Oneshots 251.wav VVE1 Vocal Oneshots 252.wav VVE1 Vocal Oneshots 253.wav VVE1 Vocal Oneshots 254.wav VVE1 Vocal Oneshots 255.wav VVE1 Vocal Oneshots 256.wav VVE1 Vocal Oneshots 257.wav VVE1 Vocal Oneshots 258.wav VVE1 Vocal Oneshots 259.wav thinkin_bout_dubz_sampled_clipped.wav wa_808tape_closedhat_08_clean.wav wa_808tape_cowbell_01_clean.wav wa_808tape_kick_28_clean.wav
 project tempo=90 master=100 pregain=200 softclip=Insane [4] softclipGain=[unity] [0] wrap=false transpose=0 scale=None (Chromatic) [0] renderMode=Off [0] midi=(null) [0]

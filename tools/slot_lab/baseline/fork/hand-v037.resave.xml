@@ -1,18 +1,4 @@
 <LITTLEGPTRACKER>
-    <MIXER>
-        <BUS>
-            <DATA>0001020304050607</DATA>
-        </BUS>
-        <VOL>
-            <DATA VALUE="255" LENGTH="8" />
-        </VOL>
-        <HPF>
-            <DATA VALUE="0" LENGTH="8" />
-        </HPF>
-        <LPF>
-            <DATA VALUE="0" LENGTH="16" />
-        </LPF>
-    </MIXER>
     <PROJECT VERSION="1">
         <PARAMETER NAME="tempo" VALUE="144" />
         <PARAMETER NAME="master" VALUE="100" />
@@ -1462,4 +1448,18 @@
             <DATA>0606FFFFFFFFFFFFFFFFFFFFFFFFFFFF0606FFFFFFFFFFFFFFFFFFFFFFFFFFFF0606000000000000000000000000000006060000000000000000000000000000</DATA>
         </DATA>
     </GROOVES>
+    <MIXER>
+        <BUS>
+            <DATA>0001020304050607</DATA>
+        </BUS>
+        <VOL>
+            <DATA VALUE="255" LENGTH="8" />
+        </VOL>
+        <HPF>
+            <DATA VALUE="0" LENGTH="8" />
+        </HPF>
+        <LPF>
+            <DATA VALUE="0" LENGTH="16" />
+        </LPF>
+    </MIXER>
 </LITTLEGPTRACKER>

@@ -1,4 +1,4 @@
-# slot_lab dump, tree fork 28ecca3
+# slot_lab dump, tree fork 17711c6
 load ok, table ratio 1
 pool 20 (result 0): 303e.wav 303f.wav 303g.wav MONOWAVE.WAV SP303_Bank_A_short_phrase.wav downramp.wav dreadnought-acid-techno-synth.wav fuckoff_Track 01.wav garage-drum-loop.wav holypiano1_consolidated.wav hotpance_rollin_clipped.wav jazzy_steppin_loop_170.wav pico1trkPiano.wav pitch_me_down_pad_2.wav sawtooth.wav sinus.wav square.wav triangle.wav tunedbell.wav untitled.wav
 project tempo=138 master=100 pregain=100 softclip=Bypass [0] softclipGain=[unity] [0] wrap=false transpose=0 scale=None (Chromatic) [0] renderMode=Off [0] midi=(null) [0]

@@ -1,4 +1,4 @@
-# slot_lab dump, tree fork 28ecca3
+# slot_lab dump, tree fork 17711c6
 load ok, table ratio 1
 pool 28 (result 0): 202BM2.WAV 202HIT2.WAV 202HIT5.WAV 202SUS1.WAV AGOGOHI.WAV Alesis-Fusion-Clean-Guitar-C3.wav Alesis-S4-Plus-Piccolo-C5.wav BOWDBASS.wav CZ-1_STRINGS1-MAJ-converted.wav CZ-1_STRINGS1-MIN-converted.wav Casio-VZ-10M-Soft-Glass-C4.wav Chorus Piano 60-converted.wav KROCK-AMG160DBDABI.10-049s.wav LESLIE1.wav MONOWAVE.WAV PIANOC4-converted.wav Rhodes_48-converted.wav TOY PIANO-converted.wav accordion.wav jazzy_steppin_loop_170.wav nineh-tri2saw.wav oldskool_sliced_clipped.wav pico1trkStab2.wav pluckchord.wav radio_queue.wav wa_808tape_clap_02_clean.wav wa_808tape_closedhat_08_clean.wav wa_808tape_crash_03_sat.wav
 project tempo=118 master=100 pregain=120 softclip=Bypass [0] softclipGain=[unity] [0] wrap=false transpose=0 scale=None (Chromatic) [0] renderMode=Off [0] midi=(null) [0]

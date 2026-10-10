@@ -145,19 +145,16 @@ static Project *gProject = 0;
 static bool gLoaded = false;
 static unsigned int gPoolResult = 0;
 
-// The steps of AppWindow::LoadProject (8887975) that touch the model. One
-// difference: the Mixer singleton is created before loading. The app creates
-// it only once the mixer view is drawn or playback runs, so the app's first
-// load in a session skips <MIXER>; later loads restore it, as here.
+// The steps of AppWindow::LoadProject that touch the model
 static Project *loadProject(const char *dir) {
   std::string root = absPath(dir);
   PersistencyService *persist = PersistencyService::GetInstance();
-  Mixer::GetInstance();
   TablePlayback::Reset();
   Path::SetAlias("project", root.c_str());
   Path::SetAlias("samples", "project:samples");
   gPoolResult = SamplePool::GetInstance()->Load();
   Project *project = new Project();
+  Mixer::GetInstance()->Clear();
   gLoaded = persist->Load();
   if (!gLoaded) project->GetInstrumentBank()->AssignDefaults();
   WatchedVariable::Disable();
