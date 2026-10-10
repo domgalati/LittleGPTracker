@@ -69,6 +69,12 @@ void Player::Close() {
     mixer_->Close();
 }
 
+void Player::ForgetInstrument(I_Instrument *instrument,
+                              I_Instrument *replacement) {
+    mixer_->ForgetInstrument(instrument, replacement);
+    TablePlayback::ForgetInstrument(instrument);
+}
+
 void Player::SetChannelMute(int channel,bool mute) {
     mixer_->SetChannelMute(channel, mute);
 }

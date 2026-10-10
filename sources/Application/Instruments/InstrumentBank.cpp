@@ -9,6 +9,8 @@
 #include "Application/Utils/char.h"
 #include "Application/Model/Config.h"
 #include "Application/Persistency/PersistencyService.h"
+#include "Application/Mixer/MixerService.h"
+#include "Application/Player/Player.h"
 #include "Filters.h"
 
 char *InstrumentTypeData[IT_LAST]= {
@@ -151,8 +153,7 @@ void InstrumentBank::RestoreContent(TiXmlElement *element) {
 							break ;
 					}
 					if (created) {
-						delete instr ;
-						instrument_[id]=created ;
+						replace(id,created) ;
 					}
 					instr=created ;
 				} ;
@@ -232,16 +233,14 @@ unsigned short InstrumentBank::Clone(unsigned short i) {
 		return NO_MORE_INSTRUMENT ;
 	}
 
-	I_Instrument *src=instrument_[i] ;
-	I_Instrument *dst=instrument_[next] ;
-
-  if (src == dst)
-  {
+	// Nothing to clone outside the bank (the empty stand-in)
+	if ((i>=MAX_INSTRUMENT_COUNT)||(i==next)) {
 		return NO_MORE_INSTRUMENT ;
 	}
 
-	delete dst ;
-  
+	I_Instrument *src=instrument_[i] ;
+	I_Instrument *dst ;
+
 	switch (src->GetType()) {
 		case IT_SAMPLE:
 			dst=new SampleInstrument() ;
@@ -253,7 +252,6 @@ unsigned short InstrumentBank::Clone(unsigned short i) {
 			dst=new MidiInstrument() ;
 			break ;
 	}
-	instrument_[next]=dst ;
 	IteratorPtr<Variable> it(src->GetIterator()) ;
 	for (it->Begin();!it->IsDone();it->Next()) {
 		Variable &srcV=it->CurrentItem() ;
@@ -262,9 +260,32 @@ unsigned short InstrumentBank::Clone(unsigned short i) {
 			dstV->CopyFrom(srcV) ;
 		}
 	}
+	replace(next,dst) ;
 	return next ;
 
 }
+
+// The one place a slot's instrument is deleted, apart from the destructor.
+// Under the mixer lock (the audio thread renders under it; SDL mutexes are
+// recursive, and button handlers already hold it): the player lets go of
+// the old instrument, then its observers, then it's deleted and the new one
+// (or none) goes in. Channels that last played it fall back to the empty
+// stand-in, not to slot 00.
+void InstrumentBank::replace(int i,I_Instrument *instrument) {
+	MixerService *ms=MixerService::GetInstance() ;
+	ms->Lock() ;
+	I_Instrument *old=instrument_[i] ;
+	if (old) {
+		Player::GetInstance()->ForgetInstrument(old,&empty_) ;
+		InstrumentEvent event ;
+		event.type_=IET_DELETED ;
+		old->SetChanged() ;
+		old->NotifyObservers(&event) ;
+		delete old ;
+	}
+	instrument_[i]=instrument ;
+	ms->Unlock() ;
+} ;
 
 void InstrumentBank::OnStart() {
 	for (int i=0;i<MAX_INSTRUMENT_COUNT;i++) {

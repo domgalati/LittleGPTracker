@@ -82,6 +82,11 @@ public:
     void SetChannelMute(int channel,bool mute) ;
     bool IsChannelMuted(int channel);
 
+    // Called by InstrumentBank, under the mixer lock, before it deletes an
+    // instrument: nothing in the player may point at it afterwards. Channels
+    // that last played it play replacement for rows without an instrument
+    void ForgetInstrument(I_Instrument *instrument, I_Instrument *replacement);
+
     // Live queuing
 
     QueueingMode GetQueueingMode(int i);

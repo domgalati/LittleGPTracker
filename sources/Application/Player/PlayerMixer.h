@@ -34,6 +34,10 @@ public:
 	I_Instrument *GetInstrument(int channel) ;
 
 	I_Instrument *GetLastInstrument(int channel) ;
+
+	// Before an instrument is deleted: stops it on the channels playing it
+	// and makes channels that last played it use replacement instead
+	void ForgetInstrument(I_Instrument *instrument,I_Instrument *replacement) ;
 	
 	void StartChannel(int channel) ;
 	void StopChannel(int channel) ;

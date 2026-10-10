@@ -703,8 +703,26 @@ static void setupClone(Project *p) {
   for (int c = 0; c < SONG_CHANNEL_COUNT; c++) setSong(s, c, 0, 0xE0 + (c < 2 ? c : 2));
 }
 
+#ifdef SL_FORK
+// Stands in for the instrument screen, which observes the instrument it shows
+class LabObserver : public I_Observer {
+public:
+  LabObserver() : deleted_(0), other_(0) {}
+  virtual void Update(Observable &o, I_ObservableData *d) {
+    if (d && ((InstrumentEvent *)d)->type_ == IET_DELETED) deleted_++;
+    else other_++;
+  }
+  int deleted_, other_;
+};
+#endif
+
 static void cloneDuringPlay(Project *p) {
   InstrumentBank *b = p->GetInstrumentBank();
+#ifdef SL_FORK
+  LabObserver obs[2];
+  b->GetInstrument(0x03)->AddObserver(obs[0]);
+  b->GetInstrument(0x04)->AddObserver(obs[1]);
+#endif
   printf("before clone: %d of %d buffers with sound (only 04 has a sample), channel 0 table %s\n",
          gOut->audible_, gOut->buffers_,
          TablePlayback::GetTablePlayback(0).GetTable() ? "running" : "stopped");
@@ -721,6 +739,11 @@ static void cloneDuringPlay(Project *p) {
   int c2 = b->Clone(0x01);
   ms->Unlock();
   printf("clones of 00 and 01 went to %02X and %02X\n", c1, c2);
+#ifdef SL_FORK
+  for (int k = 0; k < 2; k++)
+    printf("observer of the old %02X: %d deleted event(s), %d other notification(s)\n", 3 + k,
+           obs[k].deleted_, obs[k].other_);
+#endif
 }
 
 static void modePlay(const char *dir, const char *scenario) {

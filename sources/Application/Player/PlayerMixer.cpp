@@ -89,6 +89,17 @@ I_Instrument *PlayerMixer::GetLastInstrument(int channel) {
 	return lastInstrument_[channel] ;
 } ;
 
+void PlayerMixer::ForgetInstrument(I_Instrument *instrument,I_Instrument *replacement) {
+	for (int i=0;i<SONG_CHANNEL_COUNT;i++) {
+		if (channel_[i]->GetInstrument()==instrument) {
+			StopInstrument(i) ;
+		}
+		if (lastInstrument_[i]==instrument) {
+			lastInstrument_[i]=replacement ;
+		}
+	}
+} ;
+
 
 bool PlayerMixer::Clipped() {
      return clipped_ ;

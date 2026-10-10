@@ -14,6 +14,18 @@ enum InstrumentType {
 	IT_LAST
 } ;
 
+// Sent by InstrumentBank to an instrument's observers just before it deletes
+// the instrument. An observer must forget the instrument and must not call
+// RemoveObserver on it from Update, since the observer list is being walked.
+// (SampleInstrument notifies a sample change with no data.)
+enum InstrumentEventType {
+	IET_DELETED
+} ;
+
+struct InstrumentEvent: public I_ObservableData {
+	InstrumentEventType type_ ;
+} ;
+
 class I_Instrument:public VariableContainer, public Observable {
       
 public:

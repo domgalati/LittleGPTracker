@@ -22,6 +22,8 @@ public:
 	unsigned short GetNext() ;
 	unsigned short Clone(unsigned short i) ;
 private:
+	void replace(int i,I_Instrument *instrument) ;
+
 	I_Instrument *instrument_[MAX_INSTRUMENT_COUNT] ;
 	EmptyInstrument empty_ ;
 } ;

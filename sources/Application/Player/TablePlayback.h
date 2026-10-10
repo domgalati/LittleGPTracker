@@ -25,6 +25,8 @@ public:
 	bool GetAutomation() ;
 
 	static void Reset() ;
+	// Before an instrument is deleted: stops the tables it runs
+	static void ForgetInstrument(I_Instrument *) ;
 	static TablePlayback &GetTablePlayback(int channel) ;
 private:
 	Table *table_ ;
