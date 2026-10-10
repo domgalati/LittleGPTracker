@@ -61,6 +61,9 @@ InstrumentBank::~InstrumentBank() {
 } ;
 
 I_Instrument *InstrumentBank::GetInstrument(int i) {
+	if ((i<0)||(i>=MAX_INSTRUMENT_COUNT)||(!instrument_[i])) {
+		return &empty_ ;
+	}
 	return instrument_[i] ;
 } ;
 

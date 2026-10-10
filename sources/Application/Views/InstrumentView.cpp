@@ -366,6 +366,7 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
         if ((mask&EPBM_A)&&(mask&EPBM_L)) {
 			UIIntVarField *field=(UIIntVarField *)GetFocus() ;
 			mask&=(0xFFFF-EPBM_A) ;
+			if (!field) return ; // no fields: slot outside the bank
 			Variable &v=field->GetVariable() ;
 			int current=v.GetInt() ;
 			if (current==-1) return ;
@@ -427,7 +428,8 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
         // A modifier
 
         if (mask == EPBM_A) {
-            FourCC varID = ((UIIntVarField *)GetFocus())->GetVariableID();
+            UIIntVarField *field = (UIIntVarField *)GetFocus();
+            FourCC varID = field ? field->GetVariableID() : 0;
             if ((varID == SIP_TABLE) || (varID == MIP_TABLE) ||
                 (varID == SIP_SAMPLE) || (varID == SIP_PRINTFX)) {
                 viewMode_ = VM_NEW;

@@ -4,6 +4,7 @@
 #include "Application/Persistency/Persistent.h"
 #include "Application/Model/Song.h"
 #include "Application/Instruments/I_Instrument.h"
+#include "Application/Instruments/EmptyInstrument.h"
 
 #define NO_MORE_INSTRUMENT 0x100
 
@@ -12,6 +13,7 @@ public:
 	InstrumentBank() ;
 	~InstrumentBank() ;
 	void AssignDefaults() ;
+	// Never null: slot numbers outside the bank get the empty stand-in
 	I_Instrument *GetInstrument(int i) ;
 	virtual void SaveContent(TiXmlNode *node);
 	virtual void RestoreContent(TiXmlElement *element);
@@ -21,6 +23,7 @@ public:
 	unsigned short Clone(unsigned short i) ;
 private:
 	I_Instrument *instrument_[MAX_INSTRUMENT_COUNT] ;
+	EmptyInstrument empty_ ;
 } ;
 
 #endif
