@@ -29,6 +29,8 @@ public:
 	// 0 for a number outside the bank or a type without a registry row
 	I_Instrument *Create(int i,InstrumentType type) ;
 	void Empty(int i) ;
+	// Number of phrases with a row that names slot i
+	int ReferenceCount(int i,const unsigned char *phraseInstruments) ;
 	// Into the lowest empty slot
 	unsigned short Clone(unsigned short i) ;
 private:

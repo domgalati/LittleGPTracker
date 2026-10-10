@@ -11,6 +11,8 @@
 struct InstrumentTypeInfo {
 	InstrumentType type ;
 	const char *saveName ;            // TYPE attribute in the save file
+	const char *uiName ;              // shown in the instrument screen's type
+	                                  // field and its messages
 	I_Instrument *(*create)(int slot) ;
 	int legacyFirst,legacyCount ;     // upstream slots for an entry with no
 	                                  // TYPE; -1,0 if none
@@ -18,6 +20,9 @@ struct InstrumentTypeInfo {
 
 class InstrumentTypes {
 public:
+	// Rows in table order, which is the order the type field steps through
+	static int Count() ;
+	static const InstrumentTypeInfo *At(int index) ;
 	// 0 for IT_LAST (the empty stand-in) or a type without a row
 	static const InstrumentTypeInfo *Get(InstrumentType type) ;
 	// 0 if no type saves under that name

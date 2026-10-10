@@ -21,15 +21,26 @@ static I_Instrument *createPigtail(int) {
 
 // Save names must stay stable: they're the TYPE attribute in project files
 static const InstrumentTypeInfo types[]= {
-	{IT_SAMPLE,"Sample",createSample,0x00,0x80},
-	{IT_MIDI,"Midi",createMidi,0x80,0x10},
-	{IT_PIGTAIL,"Pigtail",createPigtail,-1,0}
+	{IT_SAMPLE,"Sample","SAMPLE",createSample,0x00,0x80},
+	{IT_MIDI,"Midi","MIDI",createMidi,0x80,0x10},
+	{IT_PIGTAIL,"Pigtail","PIGTAIL",createPigtail,-1,0}
 } ;
 
 #define INSTRUMENT_TYPE_COUNT (int(sizeof(types)/sizeof(types[0])))
 
 typedef char instrumentTypeCountCheck[
 	(INSTRUMENT_TYPE_COUNT==int(IT_LAST))?1:-1] ;
+
+int InstrumentTypes::Count() {
+	return INSTRUMENT_TYPE_COUNT ;
+} ;
+
+const InstrumentTypeInfo *InstrumentTypes::At(int index) {
+	if ((index<0)||(index>=INSTRUMENT_TYPE_COUNT)) {
+		return 0 ;
+	}
+	return &types[index] ;
+} ;
 
 const InstrumentTypeInfo *InstrumentTypes::Get(InstrumentType type) {
 	for (int i=0;i<INSTRUMENT_TYPE_COUNT;i++) {

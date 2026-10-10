@@ -1,4 +1,5 @@
 #include "InstrumentView.h"
+#include "Application/Instruments/InstrumentTypes.h"
 #include "Application/Instruments/MidiInstrument.h"
 #include "Application/Instruments/PigtailInstrument.h"
 #include "Application/Instruments/SampleInstrument.h"
@@ -17,11 +18,24 @@ void ImportSampleDialogCallback(View &v, ModalView &dialog) {
     ((InstrumentView &)v).OnFocus();
 }
 
-InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):FieldView(w,data) {
+static void ClearSlotCallback(View &v,ModalView &dialog) {
+	((InstrumentView &)v).OnClearSlot(dialog.GetReturnCode()==MBL_YES) ;
+}
+
+InstrumentView::InstrumentView(GUIWindow &w,ViewData *data):
+	FieldView(w,data),
+	typeVar_("type",IVF_TYPE,typeNames_,InstrumentTypes::Count()+1,0) {
 
 	project_=data->project_ ;
 	lastFocusID_=0 ;
 	current_=0 ;
+	picked_=0 ;
+	pickSlot_=-1 ;
+	clearSlot_=-1 ;
+	typeNames_[0]="--" ;
+	for (int k=0;k<InstrumentTypes::Count();k++) {
+		typeNames_[k+1]=InstrumentTypes::At(k)->uiName ;
+	}
 	onInstrumentChange() ;
 }
 
@@ -65,6 +79,11 @@ void InstrumentView::onInstrumentChange() {
 		default:
 			break ;
 	} ;
+	// After the parameters, so the first parameter keeps the default focus.
+	// None for a number outside the bank (FF from the phrase screen)
+	if (i<MAX_INSTRUMENT_COUNT) {
+		fillTypeField() ;
+	}
 
 	SetFocus(T_SimpleList<UIField>::GetFirst()) ;
 	IteratorPtr<UIField> it2(T_SimpleList<UIField>::GetIterator()) ;
@@ -304,6 +323,111 @@ void InstrumentView::fillPigtailParameters() {
 	T_SimpleList<UIField>::Insert(f1) ;
 } ;
 
+// On the row above the parameters. The slot's type is shown, not edited:
+// ProcessButtonMask turns A+arrows on it into stepType
+void InstrumentView::fillTypeField() {
+
+	int i=viewData_->currentInstrument_ ;
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	InstrumentType type=bank->GetInstrument(i)->GetType() ;
+	int index=0 ;
+	for (int k=0;k<InstrumentTypes::Count();k++) {
+		if (InstrumentTypes::At(k)->type==type) {
+			index=k+1 ;
+		}
+	}
+	typeVar_.SetInt(index,false) ;
+
+	GUIPoint position=GetAnchor() ;
+	position._y-=1 ;
+	UIIntVarField *f=new UIIntVarField(position,typeVar_,"type: %s",0,InstrumentTypes::Count(),1,1) ;
+	T_SimpleList<UIField>::Insert(f) ;
+} ;
+
+// A+arrows on the type field. An empty slot gets the next or previous type
+// in the list, created at once. So does the slot the type field filled
+// during this A hold, which lets A+RIGHT step through the types; "--"
+// empties it again. Any other instrument has to be cleared first
+void InstrumentView::stepType(int offset) {
+
+	int i=viewData_->currentInstrument_ ;
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	if (i>=MAX_INSTRUMENT_COUNT) {
+		return ;
+	}
+	if ((!bank->IsSlotEmpty(i))&&((i!=pickSlot_)||(bank->GetInstrument(i)!=picked_))) {
+		View::SetNotification("B,A to clear first") ;
+		return ;
+	}
+	int index=typeVar_.GetInt()+offset ;
+	if (index<0) {
+		index=0 ;
+	}
+	if (index>InstrumentTypes::Count()) {
+		index=InstrumentTypes::Count() ;
+	}
+	if (index==typeVar_.GetInt()) {
+		return ;
+	}
+	// The bank tells this screen (IET_DELETED) before it deletes the
+	// instrument shown; onInstrumentChange builds the screen again
+	if (index==0) {
+		bank->Empty(i) ;
+		picked_=0 ;
+	} else {
+		picked_=bank->Create(i,InstrumentTypes::At(index-1)->type) ;
+		pickSlot_=i ;
+	}
+	onInstrumentChange() ;
+	isDirty_=true ;
+} ;
+
+// B,A on the type field: Yes/No before the slot is emptied, since its
+// settings go with it
+void InstrumentView::askClearSlot() {
+
+	int i=viewData_->currentInstrument_ ;
+	InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+	if (bank->IsSlotEmpty(i)) {
+		return ;
+	}
+	I_Instrument *instr=bank->GetInstrument(i) ;
+	const InstrumentTypeInfo *info=InstrumentTypes::Get(instr->GetType()) ;
+	int phrases=bank->ReferenceCount(i,viewData_->song_->phrase_->instr_) ;
+
+	// MessageBox shows one line of up to 36 characters
+	char used[20] ;
+	if (phrases==0) {
+		strcpy(used,"Unused") ;
+	} else {
+		sprintf(used,"In %d phrase%s",phrases,(phrases==1)?"":"s") ;
+	}
+	char message[40] ;
+	sprintf(message,"Clear I%2.2X (%s)? %s",i,info?info->uiName:"?",used) ;
+
+	clearSlot_=i ;
+	MessageBox *mb=new MessageBox(*this,message,MBBF_YES|MBBF_NO) ;
+	DoModal(mb,ClearSlotCallback) ;
+} ;
+
+void InstrumentView::OnClearSlot(bool confirmed) {
+	if ((confirmed)&&(clearSlot_>=0)) {
+		// Through InstrumentBank::replace, which lets the player and this
+		// screen forget the instrument first
+		viewData_->project_->GetInstrumentBank()->Empty(clearSlot_) ;
+	}
+	clearSlot_=-1 ;
+	onInstrumentChange() ;
+	isDirty_=true ;
+} ;
+
+FourCC InstrumentView::getFocusID() {
+	// Never a static field: navigation skips them, and every layout starts
+	// with a variable field
+	UIIntVarField *field=(UIIntVarField *)GetFocus() ;
+	return field?field->GetVariableID():0 ;
+} ;
+
 void InstrumentView::warpToNext(int offset) {
 	int instrument=viewData_->currentInstrument_+offset ;
 	if (instrument>=MAX_INSTRUMENT_COUNT) {
@@ -318,6 +442,11 @@ void InstrumentView::warpToNext(int offset) {
 } ;
 
 void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
+
+	// A pick on the type field lasts while A is held (releases come here too)
+	if (!(mask&EPBM_A)) {
+		picked_=0 ;
+	}
 
 	if (!pressed) return ;
 
@@ -370,7 +499,8 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
         if ((mask&EPBM_A)&&(mask&EPBM_L)) {
 			UIIntVarField *field=(UIIntVarField *)GetFocus() ;
 			mask&=(0xFFFF-EPBM_A) ;
-			if (!field) return ; // no fields: slot outside the bank
+			// Only the table field holds a table number to clone
+			if (getFocusID()!=SIP_TABLE) return ;
 			Variable &v=field->GetVariable() ;
 			int current=v.GetInt() ;
 			if (current==-1) return ;
@@ -389,6 +519,16 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		viewMode_=VM_NORMAL ;
 	}
 
+	// A+arrows on the type field change the slot's type, not the field
+	if ((mask&EPBM_A)&&(getFocusID()==IVF_TYPE)) {
+		if (mask&(EPBM_RIGHT|EPBM_UP)) {
+			stepType(+1) ;
+		} else if (mask&(EPBM_LEFT|EPBM_DOWN)) {
+			stepType(-1) ;
+		}
+		mask&=(0xFFFF-(EPBM_LEFT|EPBM_RIGHT|EPBM_UP|EPBM_DOWN)) ;
+	}
+
 	FieldView::ProcessButtonMask(mask) ;
 
     Player *player=Player::GetInstance() ;
@@ -400,29 +540,31 @@ void InstrumentView::ProcessButtonMask(unsigned short mask,bool pressed) {
 		if (mask&EPBM_DOWN) warpToNext(-16) ;
 		if (mask&EPBM_UP) warpToNext(+16);
 		if (mask&EPBM_A) { // Allow cut instrument
-		   if (getInstrumentType()==IT_SAMPLE) {
-                if (GetFocus()==T_SimpleList<UIField>::GetFirst()) {
-	               int i=viewData_->currentInstrument_ ;
-	               InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
-	               I_Instrument *instr=bank->GetInstrument(i) ;
+			int i=viewData_->currentInstrument_ ;
+			InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
+			I_Instrument *instr=bank->GetInstrument(i) ;
+			switch (getFocusID()) {
+				case IVF_TYPE: // Clear the slot, after a Yes
+					askClearSlot() ;
+					break ;
+				case SIP_SAMPLE: // Only Sample has this field
 					instr->Purge() ;
-//                   Variable *v=instr->FindVariable(SIP_SAMPLE) ;
-//                   v->SetInt(-1) ;
-                   isDirty_=true ;
-                }
-           }
-
-		   // Check if on table
-		   if (GetFocus()==T_SimpleList<UIField>::GetLast()) {
-	            int i=viewData_->currentInstrument_ ;
-	            InstrumentBank *bank=viewData_->project_->GetInstrumentBank() ;
-	            I_Instrument *instr=bank->GetInstrument(i) ;
-                Variable *v=instr->FindVariable(SIP_TABLE) ;
-                if (v) {
-                    v->SetInt(-1) ;
-                    isDirty_=true ;
-                }
-		   } ;
+//					Variable *v=instr->FindVariable(SIP_SAMPLE) ;
+//					v->SetInt(-1) ;
+					isDirty_=true ;
+					break ;
+				case SIP_TABLE: // MIP_TABLE is the same FourCC
+				{
+					Variable *v=instr->FindVariable(SIP_TABLE) ;
+					if (v) {
+						v->SetInt(-1) ;
+						isDirty_=true ;
+					}
+					break ;
+				}
+				default:
+					break ;
+			}
         }
         if (mask&EPBM_L) {
             viewMode_=VM_CLONE ;

@@ -233,6 +233,19 @@ void InstrumentBank::Empty(int i) {
 	}
 } ;
 
+int InstrumentBank::ReferenceCount(int i,const unsigned char *phraseInstruments) {
+	int count=0 ;
+	for (int p=0;p<PHRASE_COUNT;p++) {
+		for (int r=0;r<16;r++) {
+			if (phraseInstruments[16*p+r]==i) {
+				count++ ;
+				break ;
+			}
+		}
+	}
+	return count ;
+} ;
+
 unsigned short InstrumentBank::Clone(unsigned short i) {
 
 	// Nothing to clone in an empty slot or outside the bank
