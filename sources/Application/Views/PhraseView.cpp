@@ -4,6 +4,7 @@
 #include "Application/Model/Table.h"
 #include "Application/Utils/HelpLegend.h"
 #include "Application/Utils/char.h"
+#include "Application/Views/CommandContext.h"
 #include "Application/Views/CommandSelectorCommon.h"
 #include "Application/Views/ModalDialogs/CommandSelectorModal.h"
 #include "System/Console/Trace.h"
@@ -133,8 +134,10 @@ void PhraseView::enterCommandSelector() {
     FourCC *cmdPtr = getCurrentCommandPointer();
     if (!cmdPtr) return;
     commandSelectorModalActive_ = true;
-    DoModal(new CommandSelectorModal(*this, cmdPtr, CommandSelectorPreviewCallback),
-            CommandSelectorCallback);
+    CommandSelectorModal *modal =
+        new CommandSelectorModal(*this, cmdPtr, CommandSelectorPreviewCallback);
+    modal->SetContext(CommandContext::ForPhraseRow(viewData_, row_));
+    DoModal(modal, CommandSelectorCallback);
 }
 
 void PhraseView::onCommandSelectorResult(ModalView &d) {
@@ -1064,8 +1067,15 @@ void PhraseView::processNormalButtonMask(unsigned short mask) {
                         param = phrase_->param2_ +
                                 (16 * viewData_->currentPhrase_ + row_);
                     }
+                    // The table screen's command popup: TABL runs the
+                    // table for the instrument this row plays
+                    viewData_->phraseTable_ = -1;
                     if (*cmd == I_CMD_TABL) {
                         viewData_->currentTable_ = (*param) & 0x7F;
+                        viewData_->phraseTable_ = viewData_->currentTable_;
+                        viewData_->phraseTableSlot_ =
+                            CommandContext::ForPhraseRow(viewData_, row_)
+                                .GetSlot();
                     }
                     ViewEvent ve(VET_SWITCH_VIEW, &vt);
                     SetChanged();

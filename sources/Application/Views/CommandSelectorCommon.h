@@ -7,6 +7,8 @@
 namespace CommandSelectorCommon {
 
 static const int kColumns = 5;
+// Under the grid: the line about the selected command (CommandContext)
+static const int kStatusRows = 1;
 
 static const int kCellPitch = 5;
 static const int kScreenCenterX = 20;
@@ -34,7 +36,8 @@ inline bool popupContainsPoint(const GUIPoint &anchor, int x, int y) {
     int startX = getPopupStartX() - 1;
     int endX = getPopupStartX() + getPopupInnerWidth();
     int startY = getPopupStartY(anchor) - 4; // Magic number for top border
-    int endY = getPopupStartY(anchor) + getRows() - 1; // Magic number for bottom border
+    // Magic number for bottom border, under the status line
+    int endY = getPopupStartY(anchor) + getRows() + kStatusRows - 1;
     return x >= startX && x <= endX && y >= startY && y <= endY;
 }
 

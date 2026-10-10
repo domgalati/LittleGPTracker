@@ -3,6 +3,7 @@
 #include "Application/Player/TablePlayback.h"
 #include "Application/Utils/HelpLegend.h"
 #include "Application/Utils/char.h"
+#include "Application/Views/CommandContext.h"
 #include "Application/Views/CommandSelectorCommon.h"
 #include "Application/Views/ModalDialogs/CommandSelectorModal.h"
 
@@ -531,8 +532,11 @@ void TableView::enterCommandSelector() {
     FourCC *cmdPtr = getCurrentCommandPointer();
     if (!cmdPtr) return;
     commandSelectorModalActive_ = true;
-    DoModal(new CommandSelectorModal(*this, cmdPtr, CommandSelectorPreviewCallback),
-            CommandSelectorCallback);
+    CommandSelectorModal *modal =
+        new CommandSelectorModal(*this, cmdPtr, CommandSelectorPreviewCallback);
+    modal->SetContext(
+        CommandContext::ForTable(viewData_, viewType_ == VT_TABLE2));
+    DoModal(modal, CommandSelectorCallback);
 }
 
 void TableView::onCommandSelectorResult(ModalView &d) {

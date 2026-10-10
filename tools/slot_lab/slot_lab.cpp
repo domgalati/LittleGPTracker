@@ -42,9 +42,10 @@
 //                            device, which must end with no note held),
 //                            resolve (fork: the command popup's context,
 //                            design doc 8.2: which slot a phrase row's
-//                            commands go to, and which commands each type
-//                            and location dims). Meant for the ASan build
-//                            (make play)
+//                            commands go to, the table screen's slot as the
+//                            phrase and mixer screens leave it, and which
+//                            commands each type and location dims). Meant
+//                            for the ASan build (make play)
 //
 // Trace output goes to stderr; results go to stdout.
 
@@ -79,6 +80,7 @@
 #include "Application/Views/ModalDialogs/ImportSampleDialog.h"
 #include "Application/Views/PhraseView.h"
 #include "Application/Views/CommandContext.h"
+#include "Application/Views/MixerView.h"
 #include "Application/Utils/char.h"
 #include "UIFramework/Interfaces/I_GUIWindowImp.h"
 #endif
@@ -1452,6 +1454,40 @@ static void modeResolve(Project *p, ViewData *vd) {
   expect(CommandContext::ForTable(vd, false).GetSlot() == CC_UNKNOWN_SLOT, "another table: unknown");
   vd->currentInstrument_ = 0xFF;
   expect(CommandContext::ForTable(vd, true).GetSlot() == CC_UNKNOWN_SLOT, "the instrument screen on FF: unknown");
+
+  printf("the screens that open the table screen (E0, song row 0, chain row 0)\n");
+  setRow(s, 0xE0, 3, 0x30, 0x80, I_CMD_TABL, 0x0085);  // TABL takes the low 7 bits
+  setRow(s, 0xE0, 9, 0x30, 0x40, I_CMD_VOLM, 0x0080, I_CMD_TABL, 0x0007);
+  vd->songX_ = 0;
+  vd->songY_ = 0;
+  vd->songOffset_ = 0;
+  vd->currentChain_ = 0xE0;
+  vd->chainRow_ = 0;
+  vd->currentPhrase_ = 0xE0;
+  // ViewData leaves playMode_ uninitialised until something plays, and the
+  // phrase screen reads it on any button but A (design doc, Appendix B)
+  vd->playMode_ = PM_SONG;
+  LabWindow *win = new LabWindow(*new LabWindowImp());
+  PhraseView *pv = new PhraseView(*win, vd);
+  for (int i = 0; i < 3; i++) pv->ProcessButtonMask(EPBM_DOWN, true);
+  pv->ProcessButtonMask(EPBM_R | EPBM_DOWN, true);
+  printf("  phrase R+DOWN on row 3: table %02X, slot %s\n", vd->currentTable_, slotText(vd->phraseTableSlot_));
+  expect(vd->currentTable_ == 0x05 && CommandContext::ForTable(vd, false).GetSlot() == 0x80,
+         "on row 3's TABL 0085 (80): table 05 for 80");
+  pv->ProcessButtonMask(EPBM_DOWN, true);
+  pv->ProcessButtonMask(EPBM_R | EPBM_DOWN, true);
+  expect(vd->currentTable_ == 0x05 && CommandContext::ForTable(vd, false).GetSlot() == CC_UNKNOWN_SLOT,
+         "on row 4, no TABL: still table 05, unknown");
+  for (int i = 0; i < 5; i++) pv->ProcessButtonMask(EPBM_DOWN, true);
+  pv->ProcessButtonMask(EPBM_R | EPBM_DOWN, true);
+  expect(vd->currentTable_ == 0x07 && CommandContext::ForTable(vd, false).GetSlot() == 0x40,
+         "on row 9's TABL in command column 2 (40): table 07 for 40");
+  MixerView *mv = new MixerView(*win, vd);
+  mv->ProcessButtonMask(EPBM_R | EPBM_RIGHT, true);
+  expect(vd->currentTable_ == 0x07 && CommandContext::ForTable(vd, false).GetSlot() == CC_UNKNOWN_SLOT,
+         "mixer R+RIGHT: table 07, unknown");
+  setRow(s, 0xE0, 3, 0x30, 0x80);
+  setRow(s, 0xE0, 9, 0x30, 0x40);
 
   printf("dimmed commands\n");
   b->Create(0x05, IT_PIGTAIL);

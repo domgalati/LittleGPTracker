@@ -5,12 +5,16 @@
 #include "Application/Views/BaseClasses/View.h"
 #include "Application/Instruments/CommandList.h"
 #include "Application/Views/CommandSelectorCommon.h"
+#include "Application/Views/CommandContext.h"
 
 class CommandSelectorModal : public ModalView {
   public:
     CommandSelectorModal(View &parentView, FourCC *liveTarget,
                         ModalViewCallback previewCb = 0);
     virtual ~CommandSelectorModal();
+    // Where the cell is and which slot its commands go to: commands that
+    // won't do anything there are dimmed. Unknown slot in a phrase by default
+    void SetContext(const CommandContext &context);
 
     virtual void ProcessButtonMask(unsigned short mask, bool pressed);
     virtual void DrawView();
@@ -31,6 +35,7 @@ class CommandSelectorModal : public ModalView {
     FourCC *liveTarget_;
     FourCC savedCmd_;
     ModalViewCallback previewCb_;
+    CommandContext context_;
 
     static const int GRID_COLUMNS = CommandSelectorCommon::kColumns;
 };

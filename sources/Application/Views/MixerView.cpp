@@ -141,6 +141,9 @@ void MixerView::processNormalButtonMask(unsigned int mask) {
         } else if (mask & EPBM_RIGHT) {
             ViewType vt = VT_TABLE;
             ViewEvent ve(VET_SWITCH_VIEW, &vt);
+            // No phrase row named the table: its command popup won't know
+            // the instrument
+            viewData_->phraseTable_ = -1;
             // Go back to the same column as in MixerView
             viewData_->songX_ = viewData_->mixerCol_;
             unsigned char *data = viewData_->GetCurrentSongPointer();

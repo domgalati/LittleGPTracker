@@ -32,6 +32,11 @@ CommandSelectorModal::CommandSelectorModal(View &parentView,
 
 CommandSelectorModal::~CommandSelectorModal() {}
 
+void CommandSelectorModal::SetContext(const CommandContext &context) {
+    context_ = context;
+    isDirty_ = true;
+}
+
 int CommandSelectorModal::commandToRow(FourCC command) const {
     int idx = CommandList::IndexOf(command) - 1;
     if (idx < 0) {
@@ -138,12 +143,14 @@ void CommandSelectorModal::DrawView() {
     int count = GetDisplayCommandCount();
     int rows = (count + GRID_COLUMNS - 1) / GRID_COLUMNS;
     int width = GRID_COLUMNS * 5;
+    InstrumentBank *bank = viewData_->project_->GetInstrumentBank();
 
-    SetWindow(width, rows);
+    // The grid, then a status line
+    SetWindow(width, rows + CommandSelectorCommon::kStatusRows);
 
     GUITextProperties props;
 
-    // Draw grid
+    // Draw grid. Commands that won't do anything for the cell are dimmed
     char cellStr[6];
     for (int r = 0; r < rows; r++) {
         for (int c = 0; c < GRID_COLUMNS; c++) {
@@ -152,26 +159,38 @@ void CommandSelectorModal::DrawView() {
                 continue;
             }
             bool isSelected = (r == selectedRow_ && c == selectedCol_);
+            bool isDimmed = context_.Check(cmd, bank) != CA_AVAILABLE;
 
             fourCC2char(cmd, cellStr);
             cellStr[4] = 0;
 
             props.invert_ = isSelected;
-            SetColor(isSelected ? CD_HILITE2 : CD_NORMAL);
+            if (isDimmed) {
+                SetColor(CD_COL_TITLE);
+            } else {
+                SetColor(isSelected ? CD_HILITE2 : CD_NORMAL);
+            }
             DrawString(c * 5, r, cellStr, props);
         }
     }
 
     props.invert_ = false;
+    SetColor(CD_HILITE1);
+    DrawString(0, rows, context_.GetStatus(selectedCommand_, bank).c_str(),
+               props);
+
     SetColor(CD_NORMAL);
 
+    // The slot's type may read the command its own way (MIDI's VOLM)
     std::string *cmdStr = getHelpLegend(selectedCommand_);
+    const CommandHelp *help = context_.GetHelp(selectedCommand_, bank);
     for (int i = 0; i < 3; i++) {
         // Clear legend area first so shorter lines don't leave stale text.
         View::DrawString(10, i, "                              ", props);
-        View::DrawString(10, i, cmdStr[i].c_str(), props);
-
+        View::DrawString(10, i, help ? help->line[i] : cmdStr[i].c_str(),
+                         props);
     }
+    delete[] cmdStr;
 }
 
 void CommandSelectorModal::OnPlayerUpdate(PlayerEventType, unsigned int) {}
