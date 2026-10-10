@@ -241,12 +241,26 @@ Riskiest: stage 4. It is the only step that frees objects the audio path holds r
 
 ## 11. Fixtures
 
-The repo has no upstream example projects (only a `Kick5.WAV` in an old `lgpt_ALPHA` packaging folder, no save file). The owner's `~/lgpt-run` projects are fork-era and are not fixtures.
+This repo has no upstream example projects (only a `Kick5.WAV` in an old `lgpt_ALPHA` packaging folder, no save file). The owner's `~/lgpt-run` projects are fork-era and are not fixtures.
 
-Needed from the owner (with their `samples/` folders):
-1. Projects saved by a recent djdiskmachine build (1.5 or 1.6), by Mdashdotdashn's 1.3, and anything older.
-2. Ideally covering MIDI instruments (including MIDI clones in 00-7F), tables with automation, and a compressed (LZ) save if any build wrote one.
-3. Any first-generation binary saves, if they exist.
+**djdiskmachine projects:** https://github.com/djdiskmachine/lgpt-resources (pin commit `9624b43`, 2026-05-04; about 64 MB, mostly samples). Clone it outside this repo and point slot_lab at it; don't commit it here. Six projects, each with `samples/`, all plain XML, `VERSION="1"`, with a `MIXER` node:
+
+| Project | Entries | Slots phrases use |
+|---|---|---|
+| `lgpt_1_l3ven` | 16 Sample, 16 MIDI | 16 |
+| `lgpt_BA0BAB_D1BBB5` | 9 Sample, 16 MIDI | 9 |
+| `lgpt_Bootloop-FastJump` | 32 Sample, 16 MIDI | 32 |
+| `lgpt_Float-Fi-WildDope` | 14 Sample, 16 MIDI | 14 |
+| `lgpt_Luce-COMPSENTRY` | 12 Sample, 16 MIDI | 7 (5 Sample slots unused) |
+| `lgpt_djdiskmachine-SereneDream` | 23 Sample, 16 MIDI | 16 (7 unused) |
+
+All Sample entries are in 00-7F and all MIDI entries in 80-8F. No phrase references a MIDI slot, and every referenced slot has an entry, so the 80-8F safety net (6.2 step 2) isn't exercised.
+
+Still missing, to ask the owner for or hand-craft:
+1. A project that plays MIDI instruments, including a MIDI clone in 00-7F.
+2. Mdashdotdashn 1.3 saves (`VERSION="1.3"`) and anything older (entries with no TYPE).
+3. A compressed (LZ) save, if any build wrote one.
+4. Any first-generation binary saves, if they exist.
 
 Generated: projects built and saved through upstream's own save code (slot_lab linked against upstream objects). Hand-crafted and labelled: entries with no TYPE, VERSION below 38 and below 130, phrase bytes 0x90+.
 
