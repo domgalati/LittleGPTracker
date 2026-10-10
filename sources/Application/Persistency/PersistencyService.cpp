@@ -43,10 +43,12 @@ bool PersistencyService::Load() {
 	file->Seek(0,SEEK_END) ;
 	int length=file->Tell() ;
 
-	unsigned char *compBuffer=(unsigned char *)SYS_MALLOC(length) ;
+	// One more byte for a terminating NUL: TinyXML parses a C string
+	unsigned char *compBuffer=(unsigned char *)SYS_MALLOC(length+1) ;
 
   file->Seek(0,SEEK_SET) ;
 	file->Read(compBuffer,1,length) ;
+	compBuffer[length]=0 ;
 	file->Close();
 	delete file ;
 	
@@ -60,13 +62,14 @@ bool PersistencyService::Load() {
 		
 		// Allocate a buffer to decompress data
 		
-		unsigned char *xmlSource=(unsigned char *)SYS_MALLOC(fullLength) ;
+		unsigned char *xmlSource=(unsigned char *)SYS_MALLOC(fullLength+1) ;
 		if (!xmlSource) {
-			Trace::Error("could not allocate space for %d bytes") ;
+			Trace::Error("could not allocate space for %d bytes",fullLength) ;
 			return false ;
 		}
 
     LZ_Uncompress(compBuffer+offset,xmlSource,length-offset);
+		xmlSource[fullLength]=0 ;
 
 		// Initialize XML document on decompressed buffer
 		doc.Parse((char *)xmlSource) ;

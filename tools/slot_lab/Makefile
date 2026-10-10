@@ -21,10 +21,10 @@
 #   make fixtures    regenerate the generated and hand-made fixtures. Changes
 #                    the inputs: only when a fixture's definition changes
 #   make trees       build both binaries
-#   make play        play scenarios (slot_lab play) on fixtures/up-basic
-#                    under ASan + UBSan: the instrument, player and mixer
-#                    sources rebuilt instrumented, the rest linked from the
-#                    fork's X64 objects. Exits 1 on any sanitizer report
+#   make play        play scenarios (slot_lab play) on fixtures/up-basic,
+#                    then a dump of every fixture, under ASan + UBSan: the
+#                    sources in SAN_DIRS rebuilt instrumented, the rest linked
+#                    from the fork's X64 objects. Exits 1 on any sanitizer report
 #
 # Per fixture and tree: <name>.dump (slot_lab dump) and <name>.resave.xml
 # (the fixture loaded and saved again by that tree). Dump lines starting
@@ -77,7 +77,7 @@ TREES    := fork upstream
 SAN      := -fsanitize=address,undefined -fno-sanitize=signed-integer-overflow,vptr \
             -fno-sanitize-recover=address
 SAN_DIRS := Application/Instruments Application/Player Application/Mixer Application/Views \
-            Application/Views/BaseClasses Foundation
+            Application/Views/BaseClasses Application/Persistency Foundation Externals/TinyXML
 SAN_SRC   = $(foreach f,$(wildcard $(foreach d,$(SAN_DIRS),$(ROOT)/sources/$(d)/*.cpp)), \
               $(if $(wildcard $(FORK_OBJDIR)/$(notdir $(f:.cpp=.o))),$(f)))
 SAN_SKIP  = LINUXMain.o $(notdir $(SAN_SRC:.cpp=.o))
@@ -138,7 +138,13 @@ play: $(BUILD)/slot_lab_asan
 	  if [ $$rc != 0 ] || grep -q "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/$$s.log; then \
 	    echo "play $$s: FAILED (exit $$rc)"; grep -m1 -A12 "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/$$s.log; status=1; \
 	  else echo "play $$s: no sanitizer reports"; fi; \
-	done; exit $$status
+	done; \
+	n=0; for fp in $(ALL); do f=$${fp%%=*}; p=$${fp#*=}; n=$$((n+1)); \
+	  ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1 \
+	    $(BUILD)/slot_lab_asan dump $$p > /dev/null 2> $(BUILD)/play/load-$$f.log; rc=$$?; \
+	  if [ $$rc != 0 ] || grep -q "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/load-$$f.log; then \
+	    echo "load $$f: FAILED (exit $$rc)"; grep -m1 -A12 "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/load-$$f.log; status=1; fi; \
+	done; echo "loaded $$n fixtures under ASan"; exit $$status
 
 # ------------------------------------------------------------- runs
 
