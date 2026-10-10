@@ -70,6 +70,11 @@ public:
 
 	int currentTable_ ;			// .Current edited table
 
+	int phraseTable_ ;			// .Table the phrase screen last opened from a
+								//  row with TABL (-1: none since), and the
+	int phraseTableSlot_ ;		//  slot that row plays (-1: unknown). For the
+								//  table screen's command popup
+
 	int currentGroove_ ;			// .Current edited groove
 
 	int mixerCol_ ;				//

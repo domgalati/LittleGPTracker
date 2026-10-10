@@ -39,8 +39,12 @@
 //                            screen's type field and clear confirmation on
 //                            slots the song is playing, then a seeded
 //                            random run of both; MIDI goes to a recording
-//                            device, which must end with no note held).
-//                            Meant for the ASan build (make play)
+//                            device, which must end with no note held),
+//                            resolve (fork: the command popup's context,
+//                            design doc 8.2: which slot a phrase row's
+//                            commands go to, and which commands each type
+//                            and location dims). Meant for the ASan build
+//                            (make play)
 //
 // Trace output goes to stderr; results go to stdout.
 
@@ -74,6 +78,8 @@
 #include "Application/Views/InstrumentView.h"
 #include "Application/Views/ModalDialogs/ImportSampleDialog.h"
 #include "Application/Views/PhraseView.h"
+#include "Application/Views/CommandContext.h"
+#include "Application/Utils/char.h"
 #include "UIFramework/Interfaces/I_GUIWindowImp.h"
 #endif
 // TinyXML's Tiny2NosStub.h maps stdio onto the app's FileSystem; the harness
@@ -1286,6 +1292,200 @@ static void modeTypes(Project *p, ViewData *vd) {
 }
 #endif
 
+#ifdef SL_FORK
+// ------------------------------------------------------------- resolve
+
+static const char *slotText(int slot) {
+  static char buf[8];
+  if (slot == CC_UNKNOWN_SLOT) return "unknown";
+  sprintf(buf, "%02X", slot);
+  return buf;
+}
+
+// One resolver case: the slot phrase row `row` plays, reached through song
+// row srow of column col, chain row crow of `chain`
+static void expectResolve(Song *s, const char *what, int col, int srow, int chain, int crow, int phrase,
+                          int row, int want) {
+  int got = CommandContext::ResolvePhraseRow(s, col, srow, chain, crow, phrase, row);
+  char line[200];
+  snprintf(line, sizeof(line), "%s: %s", what, slotText(got));
+  if (got != want) snprintf(line + strlen(line), sizeof(line) - strlen(line), " (want %s)", slotText(want));
+  expect(got == want, line);
+}
+
+// The popup's cells for a context: how many stay lit, and the dimmed ones
+static void expectCells(InstrumentBank *b, const CommandContext &cc, const char *what, int wantLit) {
+  std::string dimmed;
+  int lit = 0;
+  for (int i = 1; i < CommandList::GetCount(); i++) {
+    FourCC c = CommandList::GetAt(i);
+    if (cc.Check(c, b) == CA_AVAILABLE) {
+      lit++;
+    } else {
+      char name[5];
+      fourCC2char(c, name);
+      name[4] = 0;
+      dimmed += std::string(" ") + name;
+    }
+  }
+  char line[300];
+  snprintf(line, sizeof(line), "%s: %d of %d lit, dimmed:%s", what, lit, CommandList::GetCount() - 1,
+           dimmed.empty() ? " none" : dimmed.c_str());
+  expect(lit == wantLit, line);
+}
+
+static void expectStatus(InstrumentBank *b, const CommandContext &cc, FourCC c, const char *want) {
+  std::string got = cc.GetStatus(c, b);
+  char line[200];
+  snprintf(line, sizeof(line), "status \"%s\"%s%s%s", got.c_str(), got == want ? "" : " (want \"",
+           got == want ? "" : want, got == want ? "" : "\")");
+  expect(got == want && got.size() <= CC_STATUS_LENGTH, line);
+}
+
+// The command popup's context (design doc 8.2) on up-basic's slots: 00-02, 40,
+// 7F Samples, 80-8F MIDI, the rest empty. No playback
+static void modeResolve(Project *p, ViewData *vd) {
+  InstrumentBank *b = p->GetInstrumentBank();
+  Song *s = p->song_;
+  if (b->FirstEmpty() != 0x03 || filledSlots(b) != 21) die("resolve scenario needs up-basic's slots");
+  clearSong(s);
+  for (int i = 0xE0; i <= 0xEC; i++) {
+    clearChain(s, i);
+    clearPhrase(s, i);
+  }
+  // Column 0: song rows 0-2 chains E0-E2. E0 plays phrases E0, E1; E1 plays
+  // E2, E3 and ends at its empty row 2, so its E4 never plays; E2 plays E5
+  setSong(s, 0, 0, 0xE0);
+  setSong(s, 0, 1, 0xE1);
+  setSong(s, 0, 2, 0xE2);
+  setChain(s, 0xE0, 0, 0xE0);
+  setChain(s, 0xE0, 1, 0xE1);
+  setChain(s, 0xE1, 0, 0xE2);
+  setChain(s, 0xE1, 1, 0xE3);
+  setChain(s, 0xE1, 3, 0xE4);
+  setChain(s, 0xE2, 0, 0xE5);
+  setRow(s, 0xE0, 3, 0x30, 0x80);
+  setRow(s, 0xE0, 5, 0x30, 0xFF);  // a note without an instrument
+  setRow(s, 0xE0, 7, 0xFF, 0x00);  // an instrument without a note
+  setRow(s, 0xE0, 9, 0x30, 0x40);
+  setRow(s, 0xE1, 2, 0x30, 0x03);  // 03 is empty
+  setRow(s, 0xE3, 4, 0x30, 0xFF);
+  setRow(s, 0xE4, 8, 0x30, 0x01);
+
+  printf("rows of one phrase (E0, song row 0, chain row 0)\n");
+  expectResolve(s, "row 3, note and 80", 0, 0, 0xE0, 0, 0xE0, 3, 0x80);
+  expectResolve(s, "row 4, empty, below row 3", 0, 0, 0xE0, 0, 0xE0, 4, 0x80);
+  expectResolve(s, "row 5, a note without an instrument", 0, 0, 0xE0, 0, 0xE0, 5, 0x80);
+  expectResolve(s, "row 8, below row 7's 00 without a note", 0, 0, 0xE0, 0, 0xE0, 8, 0x80);
+  expectResolve(s, "row 9, note and 40", 0, 0, 0xE0, 0, 0xE0, 9, 0x40);
+  expectResolve(s, "row 2, nothing above in the song", 0, 0, 0xE0, 0, 0xE0, 2, CC_UNKNOWN_SLOT);
+
+  printf("earlier phrases and chains\n");
+  expectResolve(s, "E1 row 0: E0's last, row 9", 0, 0, 0xE0, 1, 0xE1, 0, 0x40);
+  expectResolve(s, "E1 row 2: empty slot 03", 0, 0, 0xE0, 1, 0xE1, 2, 0x03);
+  expectResolve(s, "E2 (song row 1): chain E0 above, its E1", 0, 1, 0xE1, 0, 0xE2, 15, 0x03);
+  expectResolve(s, "E3 row 15: its note without an instrument, then E2, then E1", 0, 1, 0xE1, 1, 0xE3, 15, 0x03);
+  expectResolve(s, "E4 row 3: chain E1 ends above it", 0, 1, 0xE1, 3, 0xE4, 3, CC_UNKNOWN_SLOT);
+  expectResolve(s, "E4 row 8: its own 01", 0, 1, 0xE1, 3, 0xE4, 8, 0x01);
+  expectResolve(s, "E5 (song row 2): E1 skips its unplayed E4 (01)", 0, 2, 0xE2, 0, 0xE5, 15, 0x03);
+
+  printf("links that don't hold\n");
+  expectResolve(s, "chain row 1 of E1 isn't E2", 0, 1, 0xE1, 1, 0xE2, 15, CC_UNKNOWN_SLOT);
+  expectResolve(s, "song row 2 isn't chain E1", 0, 2, 0xE1, 0, 0xE2, 15, CC_UNKNOWN_SLOT);
+  expectResolve(s, "phrase FF", 0, 0, 0xE0, 0, 0xFF, 3, CC_UNKNOWN_SLOT);
+  expectResolve(s, "row 16", 0, 0, 0xE0, 0, 0xE0, 16, CC_UNKNOWN_SLOT);
+  expectResolve(s, "chain FF: the phrase only", 0, 0, 0xFF, 0, 0xE0, 4, 0x80);
+
+  printf("where the player loops back (column 1: E6, empty row, E7; column 2: E6, E8, E7)\n");
+  setChain(s, 0xE6, 0, 0xE6);
+  setRow(s, 0xE6, 0, 0x30, 0x85);
+  setChain(s, 0xE7, 0, 0xE7);
+  setChain(s, 0xE8, 1, 0xE6);  // first row empty
+  setSong(s, 1, 0, 0xE6);
+  setSong(s, 1, 2, 0xE7);
+  setSong(s, 2, 0, 0xE6);
+  setSong(s, 2, 1, 0xE8);
+  setSong(s, 2, 2, 0xE7);
+  expectResolve(s, "after an empty song row", 1, 2, 0xE7, 0, 0xE7, 15, CC_UNKNOWN_SLOT);
+  expectResolve(s, "after a chain whose first row is empty", 2, 2, 0xE7, 0, 0xE7, 15, CC_UNKNOWN_SLOT);
+  setSong(s, 2, 1, 0xE6);
+  expectResolve(s, "the same with E6 in its place", 2, 2, 0xE7, 0, 0xE7, 15, 0x85);
+
+  printf("the longest search (255 song rows of 16 phrases of 16 empty rows)\n");
+  for (int r = 0; r < 16; r++) setChain(s, 0xE9, r, 0xEA);
+  setChain(s, 0xEB, 0, 0xEC);
+  setRow(s, 0xEC, 0, 0x30, 0x7F);
+  for (int r = 0; r < SONG_ROW_COUNT; r++) {
+    setSong(s, 3, r, 0xE9);
+    setSong(s, 4, r, r ? 0xE9 : 0xEB);
+  }
+  struct timeval t0, t1;
+  gettimeofday(&t0, 0);
+  expectResolve(s, "column 3, nothing anywhere", 3, 255, 0xE9, 15, 0xEA, 15, CC_UNKNOWN_SLOT);
+  expectResolve(s, "column 4, 7F on song row 0", 4, 255, 0xE9, 15, 0xEA, 15, 0x7F);
+  gettimeofday(&t1, 0);
+  printf("  both searches: %ld us (ASan build)\n", (long)((t1.tv_sec - t0.tv_sec) * 1000000 + t1.tv_usec - t0.tv_usec));
+
+  printf("the phrase screen's position\n");
+  vd->songX_ = 0;
+  vd->songY_ = 1;
+  vd->songOffset_ = 0;
+  vd->currentChain_ = 0xE1;
+  vd->chainRow_ = 1;
+  vd->currentPhrase_ = 0xE3;
+  CommandContext pc = CommandContext::ForPhraseRow(vd, 15);
+  expect(pc.GetLocation() == CL_PHRASE && pc.GetSlot() == 0x03, "ForPhraseRow: E3 row 15 plays 03");
+  vd->songY_ = 0;
+  vd->songOffset_ = 1;
+  expect(CommandContext::ForPhraseRow(vd, 15).GetSlot() == 0x03, "song row from songOffset_ + songY_");
+
+  printf("the table screen\n");
+  vd->currentInstrument_ = 0x40;
+  vd->currentTable_ = 0x05;
+  expect(CommandContext::ForTable(vd, true).GetSlot() == 0x40, "under the instrument screen: its slot");
+  expect(CommandContext::ForTable(vd, false).GetSlot() == CC_UNKNOWN_SLOT, "under the phrase screen, no TABL row: unknown");
+  vd->phraseTable_ = 0x05;
+  vd->phraseTableSlot_ = 0x80;
+  CommandContext tc = CommandContext::ForTable(vd, false);
+  expect(tc.GetLocation() == CL_TABLE && tc.GetSlot() == 0x80, "the TABL row's slot while table 05 shows");
+  vd->currentTable_ = 0x06;
+  expect(CommandContext::ForTable(vd, false).GetSlot() == CC_UNKNOWN_SLOT, "another table: unknown");
+  vd->currentInstrument_ = 0xFF;
+  expect(CommandContext::ForTable(vd, true).GetSlot() == CC_UNKNOWN_SLOT, "the instrument screen on FF: unknown");
+
+  printf("dimmed commands\n");
+  b->Create(0x05, IT_PIGTAIL);
+  expectCells(b, CommandContext(CL_PHRASE, 0x00), "phrase, Sample 00", 22);
+  expectCells(b, CommandContext(CL_PHRASE, 0x80), "phrase, MIDI 80", 13);
+  expectCells(b, CommandContext(CL_PHRASE, 0x05), "phrase, PIGTAIL 05", 7);
+  expectCells(b, CommandContext(CL_PHRASE, 0x03), "phrase, empty 03", 7);
+  expectCells(b, CommandContext(CL_PHRASE), "phrase, unknown", 26);
+  expectCells(b, CommandContext(CL_TABLE, 0x00), "table, Sample 00", 19);
+  expectCells(b, CommandContext(CL_TABLE, 0x80), "table, MIDI 80", 10);
+  expectCells(b, CommandContext(CL_TABLE, 0x05), "table, PIGTAIL 05", 4);
+  expectCells(b, CommandContext(CL_TABLE, 0x03), "table, empty 03", 4);
+  expectCells(b, CommandContext(CL_TABLE), "table, unknown", 23);
+  expectCells(b, CommandContext(CL_PHRASE, 0xFF), "phrase, slot FF: as unknown", 26);
+
+  printf("status lines and help\n");
+  expectStatus(b, CommandContext(CL_PHRASE), I_CMD_ARPG, "instrument unknown");
+  expectStatus(b, CommandContext(CL_PHRASE), I_CMD_IRTG, "tables only");
+  expectStatus(b, CommandContext(CL_TABLE, 0x00), I_CMD_TMPO, "phrases only");
+  expectStatus(b, CommandContext(CL_PHRASE, 0x80), I_CMD_MDCC, "I80 MIDI");
+  expectStatus(b, CommandContext(CL_PHRASE, 0x80), I_CMD_FCUT, "not for I80 MIDI");
+  expectStatus(b, CommandContext(CL_PHRASE, 0x05), I_CMD_VOLM, "not for I05 PIGTAIL");
+  expectStatus(b, CommandContext(CL_TABLE, 0x7F), I_CMD_CRSH, "I7F SAMPLE");
+  expectStatus(b, CommandContext(CL_PHRASE, 0x03), I_CMD_KILL, "I03 empty");
+  expectStatus(b, CommandContext(CL_PHRASE, 0x03), I_CMD_VOLM, "I03 is empty");
+  const CommandHelp *h = CommandContext(CL_PHRASE, 0x80).GetHelp(I_CMD_VOLM, b);
+  expect(h && !strcmp(h->line[0], "VOLuMe:--bb"), "MIDI's own help for VOLM");
+  expect(CommandContext(CL_TABLE, 0x81).GetHelp(I_CMD_RTRG, b) != 0, "and for RTRG, in a table too");
+  expect(!CommandContext(CL_PHRASE, 0x80).GetHelp(I_CMD_MDCC, b), "none of its own for MDCC");
+  expect(!CommandContext(CL_PHRASE, 0x00).GetHelp(I_CMD_VOLM, b), "none for a Sample's VOLM");
+  expect(!CommandContext(CL_PHRASE).GetHelp(I_CMD_VOLM, b), "none when the slot is unknown");
+}
+#endif
+
 // Channel 0 plays one note with a column 1 command whose parameter has low
 // nibble 0, and DLAY dd in command column 2. Returns the pulse at which the
 // note starts
@@ -1319,10 +1519,11 @@ static void modeDlay() {
 
 static void modePlay(const char *dir, const char *scenario) {
   std::string sc = scenario;
-  if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay" && sc != "flows" && sc != "types")
+  if (sc != "range" && sc != "clone" && sc != "view" && sc != "dlay" && sc != "flows" && sc != "types" &&
+      sc != "resolve")
     die("unknown scenario ", scenario);
 #ifndef SL_FORK
-  if (sc == "flows" || sc == "types") die("flows and types scenarios: fork only");
+  if (sc == "flows" || sc == "types" || sc == "resolve") die("flows, types and resolve scenarios: fork only");
 #else
   if (sc == "types") {
     // Before the project exists: MidiInstrument keeps the first service it sees
@@ -1366,6 +1567,11 @@ static void modePlay(const char *dir, const char *scenario) {
     if (gFailed) die("types scenario: checks failed");
     return;
   }
+  if (sc == "resolve") {
+    modeResolve(project, viewData);
+    if (gFailed) die("resolve scenario: checks failed");
+    return;
+  }
 #endif
   player->OnStartButton(PM_SONG, 0, false, 0);
   if (sc == "range") {
@@ -1387,7 +1593,7 @@ int main(int argc, char **argv) {
   if (argc < 3) {
     fprintf(stderr, "usage: slot_lab dump|mem <projdir> | save <projdir> <outdir> | xml <file> <out>\n"
                     "       | gen basic|clones|tables <projdir> | lz <in> <out>\n"
-                    "       | play <projdir> range|clone|view|dlay|flows|types\n");
+                    "       | play <projdir> range|clone|view|dlay|flows|types|resolve\n");
     return 2;
   }
   std::string mode = argv[1];

@@ -13,6 +13,8 @@ ViewData::ViewData(Project *project) {
 	chainCol_=0 ;
 	chainRow_=0 ;
 	currentTable_=0 ;
+	phraseTable_=-1 ;
+	phraseTableSlot_=-1 ;
 	currentInstrument_=0 ;
 	currentGroove_=0 ;
 	mixerCol_=0 ;
