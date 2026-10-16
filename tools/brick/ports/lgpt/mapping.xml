@@ -1,0 +1,18 @@
+<!--
+    TrimUI Brick under Knulli. Button numbers from Knulli's own es_input.cfg
+    ("TRIMUI Brick Controller"): B=4 A=5 X=6 Y=7 L1=8 R1=9 L2=10 R2=11
+    SELECT=12 START=13 MENU=14 FN=15,16. D-pad is hat 0.
+    DUMPEVENT in config.xml logs presses to log.txt as "but(0):N".
+-->
+<MAPPINGS>
+    <MAP src="hat:0:0:0" dst="/event/up" />
+    <MAP src="hat:0:0:2" dst="/event/down" />
+    <MAP src="hat:0:0:3" dst="/event/left" />
+    <MAP src="hat:0:0:1" dst="/event/right" />
+
+    <MAP src="but:0:5" dst="/event/a" />
+    <MAP src="but:0:4" dst="/event/b" />
+    <MAP src="but:0:8" dst="/event/lshoulder" />
+    <MAP src="but:0:9" dst="/event/rshoulder" />
+    <MAP src="but:0:13" dst="/event/start" />
+</MAPPINGS>

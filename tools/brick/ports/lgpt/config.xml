@@ -1,0 +1,11 @@
+<CONFIG>
+	<AUTO_LOAD_LAST value="NO"/>
+	<AUDIOBUFFERSIZE value='512'/>
+	<SCREENMULT value='3'/>
+	<FULLSCREEN value='YES'/>
+	<KEYDELAY value="200"/>
+	<KEYREPEAT value="100" />
+	<DUMPEVENT value="YES"/> <!-- logs button numbers to log.txt, for fixing mapping.xml -->
+	<FONTTYPE value='0' />
+	<SCREENWIDTH value='1024'/>
+</CONFIG>
