@@ -83,7 +83,7 @@ This fork of djdiskmachine/LittleGPTracker. Remotes: `origin` = domgalati/Little
 - Display: Knulli's SDL 2.32.8 uses a `mali` video driver that isn't in upstream SDL. LGPT's Linux main leaves `framebuffer_` false, and SDL2 never reports the SDL1 driver name `fbcon` that would clear `windowed_`, so the window is the picture's size (960x720 at `SCREENMULT` 3). The driver places it at the screen's top left, and nothing ever draws the rest of the 1024x768 screen: the right 64 columns showed black and the bottom 48 rows show colourful noise that changes every launch (most likely leftover memory in the 1024x16384 framebuffer, not cleared between programs). The owner loves the noise: keep it. The card's `config.xml` sets `SCREENWIDTH` 1024 (`SDLGUIWindowImp.cpp`): the window is 1024x720, the picture centered with 32-pixel black bars, the bottom strip left alone. `SCREENHEIGHT` 768 would cover the noise. Before that change the card had `lgpt-aarch64.elf.bak-display` and `config.xml.bak-display`.
 - `sources/Foundation/Types/Types.h:21` defines `MAX(a,b)` as the minimum (upstream bug; `Application/Utils/minmax.h` has a correct one). Don't use it.
 - Buttons (from Knulli's `es_input.cfg`, "TRIMUI Brick Controller"): d-pad is hat 0; B=4, A=5, L1=8, R1=9, START=13. Display 1024x768, `SCREENMULT` 3.
-- Owner-verified on the Brick (2026-10-16): all buttons work, PIGTAIL on CSAW is in tune with no slowness or hiccups.
+- Owner-verified on the Brick (2026-10-16): all buttons work, PIGTAIL on CSAW is in tune with no slowness or hiccups. With `SCREENWIDTH` 1024 the picture is centered and the bottom noise is still there (owner, 2026-10-16).
 
 ## Workflow rules
 - Survey the code before editing. Make one change at a time. Commit at each working stage.
