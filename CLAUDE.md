@@ -76,14 +76,21 @@ This fork of djdiskmachine/LittleGPTracker. Remotes: `origin` = domgalati/Little
 - slot_lab `make cmdlists` (instant, no build): every command list the popup reads (the three types', `Player::PhraseCommands`, `TablePlayback::TableCommands`) against the switch it describes.
 - `tools/gui_lab/drive.py` (stage 4): runs the real app on a private Xvfb display (`SDL_AUDIODRIVER=dummy`: silent, but the audio thread renders), presses buttons through XTest and saves screenshots, so the agent can see a screen. Usage and an ASan app build recipe are in its header. Start Xvfb on its own display number (e.g. `:77`), kill only the processes you started, and never touch the owner's `~/lgpt-run`.
 
+## TrimUI Brick (Knulli) (`tools/brick/`)
+- Built with the RG35XXPLUS platform (aarch64, SDL2, `-O3`) in a Debian arm64 cross-compile image (`tools/brick/Dockerfile`, tag `lgpt-aarch64`). `tools/brick/deploy.sh` builds it and pushes `projects/lgpt-rg35xxplus.elf` to `/userdata/roms/ports/lgpt/lgpt-aarch64.elf` on the Brick. `--no-build` pushes the last build; `--log` pulls `log.txt`. PortMaster isn't needed: Knulli's Ports menu runs any `.sh` in `roms/ports`.
+- The owner's setup: the Brick is behind a second router, so the script is run as `BRICK_HOST=192.168.0.215 tools/brick/deploy.sh` (a forward to the Brick's SSH). It logs in with `sshpass` and the password `linux` (`BRICK_PASS`). Key login doesn't work: Knulli's home is on exFAT, where every file looks world-writable, so sshd's `StrictModes` rejects the key file. The owner was offered turning `StrictModes` off and declined.
+- On the card: `roms/ports/LittleGPTracker.sh` (launcher, logs to `lgpt/log.txt`) and `roms/ports/lgpt/` (binary, `config.xml`, `mapping.xml`, projects). Changes made by hand to the card or to SD-card files aren't in the repo. Mount the card and unmount it cleanly, and have the owner shut down from Knulli's menu before pulling it: the first copy lost its clusters (fsck.exfat "marked as free").
+- Buttons (from Knulli's `es_input.cfg`, "TRIMUI Brick Controller"): d-pad is hat 0; B=4, A=5, L1=8, R1=9, START=13. Display 1024x768, `SCREENMULT` 3.
+- Owner-verified on the Brick (2026-10-16): all buttons work, PIGTAIL on CSAW is in tune with no slowness or hiccups.
+
 ## Workflow rules
 - Survey the code before editing. Make one change at a time. Commit at each working stage.
 - Never claim something works without building, running or testing it, and say what you didn't run.
 - The agent can't hear audio. The user is the listening test, so ask them to listen.
 
 ## Not yet verified
-- Any handheld hardware or non-X64 platform; an optimised (`-O3`) build; the MSVC and Xcode project files.
+- Handhelds other than the owner's TrimUI Brick, and any non-X64 platform other than the aarch64 build below; the MSVC and Xcode project files. The `-O3` build is only checked on the Brick.
 - Stage 4 with a real MIDI device or monitor (slot_lab records what the MIDI service sends instead), and by the owner's hands.
 - A project written by a real newer build with an unknown instrument type (stage 6 was checked with hand-edited projects, by the agent under Xvfb and by the owner).
 - By ear, the user has confirmed PIGTAIL on CSAW: it plays, is in tune, responds to timbre, color and volume (including sweeps during playback), and saves and loads. The other 47 shapes haven't been listened to.
-- Driver rates other than 44.1 kHz in the real app (48 kHz only in `make tune`); PIGTAIL CPU on handhelds.
+- Driver rates other than 44.1 kHz in the real app (48 kHz only in `make tune`); PIGTAIL CPU on handhelds other than the Brick, and on the Brick for shapes other than CSAW, long sessions and battery life.
