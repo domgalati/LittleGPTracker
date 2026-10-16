@@ -422,14 +422,17 @@ static unsigned char *readFile(const char *name, int *len) {
   return buf;
 }
 
-// Same decision as PersistencyService::Load: plain XML if it parses, else LZ
+// Same decision as the fork's PersistencyService::Load: plain XML if it
+// parses without an error, else LZ with a plausible length
 static void modeXml(const char *name, const char *out) {
   int len;
   unsigned char *buf = readFile(name, &len);
   TiXmlDocument doc;
-  if (!doc.Parse((char *)buf)) {
-    int full;
-    memcpy(&full, buf, sizeof(int));
+  doc.Parse((char *)buf);
+  if (doc.Error()) {
+    int full = 0;
+    if (len > (int)sizeof(int)) memcpy(&full, buf, sizeof(int));
+    if (full <= 0 || full > 16 * 1024 * 1024) die("neither XML nor LZ: ", name);
     unsigned char *xml = (unsigned char *)malloc(full + 1);
     LZ_Uncompress(buf + sizeof(int), xml, len - sizeof(int));
     xml[full] = 0;
@@ -1715,8 +1718,7 @@ static void addUnknownEntries(const char *dir) {
   if (extra.Error()) die("XML error in the added entries");
   for (TiXmlElement *e = extra.RootElement()->FirstChildElement(); e; e = e->NextSiblingElement())
     bank->InsertEndChild(*e);
-  // As the app writes it. Not compact: the loader takes a file that ends
-  // right after its last '>' for an LZ one (design doc, Appendix B)
+  // As the app writes it
   if (!gUnknownInput.SaveFile(file.c_str())) die("can't write ", file.c_str());
 }
 

@@ -33,7 +33,10 @@
 #   make play        play scenarios (slot_lab play) on fixtures/up-basic
 #                    (flows and unknown on a copy of it, since they write
 #                    into the project),
-#                    then a dump of every fixture, under ASan + UBSan: the
+#                    then a dump of every fixture and of badsaves.py's
+#                    variants of up-basic's save (no final newline, broken
+#                    XML, LZ lengths out of range; fork only, upstream
+#                    crashes on some), under ASan + UBSan: the
 #                    sources in SAN_DIRS rebuilt instrumented, the rest linked
 #                    from the fork's X64 objects. Exits 1 on any sanitizer report
 #
@@ -155,7 +158,18 @@ play: $(BUILD)/slot_lab_asan
 	    $(BUILD)/slot_lab_asan dump $$p > /dev/null 2> $(BUILD)/play/load-$$f.log; rc=$$?; \
 	  if [ $$rc != 0 ] || grep -q "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/load-$$f.log; then \
 	    echo "load $$f: FAILED (exit $$rc)"; grep -m1 -A12 "ERROR: AddressSanitizer\|runtime error" $(BUILD)/play/load-$$f.log; status=1; fi; \
-	done; echo "loaded $$n fixtures under ASan"; exit $$status
+	done; echo "loaded $$n fixtures under ASan"; \
+	mkdir -p $(BUILD)/play/saves; \
+	python3 badsaves.py fixtures/up-basic fixtures/hand-lz $(BUILD)/play/saves > $(BUILD)/play/saves.list || exit 1; \
+	while read v want; do p=$(BUILD)/play/saves/$$v; \
+	  ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=print_stacktrace=1 \
+	    $(BUILD)/slot_lab_asan dump $$p > $$p.dump 2> $$p.log; rc=$$?; \
+	  if [ $$want = same ]; then grep -v '^#' baseline/fork/up-basic.dump | cmp -s - <(grep -v '^#' $$p.dump); \
+	  else grep -q '^load no save file' $$p.dump && grep -q 'and not an LZ save' $$p.log; fi; ok=$$?; \
+	  if [ $$rc != 0 ] || [ $$ok != 0 ] || grep -q "ERROR: AddressSanitizer\|runtime error" $$p.log; then \
+	    echo "save $$v: FAILED (exit $$rc, expected $$want)"; grep -m1 -A12 "ERROR: AddressSanitizer\|runtime error" $$p.log; status=1; \
+	  else echo "save $$v: $$want"; fi; \
+	done < $(BUILD)/play/saves.list; exit $$status
 
 # ------------------------------------------------------------- runs
 
