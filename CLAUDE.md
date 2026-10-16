@@ -84,6 +84,6 @@ This fork of djdiskmachine/LittleGPTracker. Remotes: `origin` = domgalati/Little
 ## Not yet verified
 - Any handheld hardware or non-X64 platform; an optimised (`-O3`) build; the MSVC and Xcode project files.
 - Stage 4 with a real MIDI device or monitor (slot_lab records what the MIDI service sends instead), and by the owner's hands.
-- Stage 6 by the owner's eyes: the PIGTAIL screen built from its layout, and a slot holding an unknown type (screen, clear dialog, phrase header, popup status). The agent checked them under Xvfb only, with a hand-edited project; no real newer build has written an unknown type yet.
+- A project written by a real newer build with an unknown instrument type (stage 6 was checked with hand-edited projects, by the agent under Xvfb and by the owner).
 - By ear, the user has confirmed PIGTAIL on CSAW: it plays, is in tune, responds to timbre, color and volume (including sweeps during playback), and saves and loads. The other 47 shapes haven't been listened to.
 - Driver rates other than 44.1 kHz in the real app (48 kHz only in `make tune`); PIGTAIL CPU on handhelds.

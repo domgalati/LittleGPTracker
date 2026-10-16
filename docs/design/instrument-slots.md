@@ -344,6 +344,7 @@ Riskiest: stage 4. It is the only step that frees objects the audio path holds r
 - Found: the loader takes a save that ends right after its last `>` for an LZ one and crashes (Appendix B).
 - Not done, from reading the code: Compact's "remove unused samples" counts only the samples of Sample instruments. A sample that only a kept entry names (in a PARAM value) can be deleted from disk, since this build can't tell what the entry's parameters mean.
 - Not run by the agent: listening (nothing audible changed: PIGTAIL's variables and rendering are untouched, and kept entries are silent like empty slots); a handheld; a project written by a real newer build. The owner's checks for this stage: the PIGTAIL screen as before (pick, edit, B+arrows between slots, save and reload), and a slot holding an unknown type: the screen, the phrase header, the popup, saving (the entry stays in `lgptsav.dat`) and clearing it.
+- Owner's GUI test (reported 2026-10-16): stage 6 checks out.
 
 ## 11. Fixtures
 
