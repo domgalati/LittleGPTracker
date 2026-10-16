@@ -1,6 +1,6 @@
 # PIGTAIL phrase commands: TIMB, COLR, VOLM
 
-Status: approved by the owner 2026-10-16. Stage A (section 8) done and committed on `feat/pigtail-commands`; stage B not started. Tick each stage here when it's committed. Written 2026-10-16 against master `bd30d84`; every `file:line` below refers to that commit. Apart from what stage A records, nothing here is built or run yet: every other claim about today's behaviour comes from reading the code. Read CLAUDE.md first.
+Status: approved by the owner 2026-10-16. Stages A and B (section 8) are committed on `feat/pigtail-commands`; B waits for the owner's listening test. Tick each stage here when it's committed. Written 2026-10-16 against master `bd30d84`; every `file:line` below refers to that commit. Section 8 records what was built and run; other claims about the code's behaviour come from reading it. Read CLAUDE.md first.
 
 ## 1. Goal
 
@@ -73,18 +73,20 @@ Consequences:
 - No change to `Player`, `PlayerChannel`, `TablePlayback` or saving. Phrases and tables already store any FourCC as raw bytes (`Song.cpp:37-39`).
 
 ### 6.2 PigtailInstrument
-- **Per-voice state.** Add to `PigtailVoice` (`PigtailInstrument.cpp:43`) one modulated value per parameter: `{ bool active; int32 current; int32 target; int32 step; }`.
+- **Per-voice state.** Add to `PigtailVoice` (`PigtailInstrument.cpp:43`) one modulated value per parameter: `{ bool active; int32 current; int32 target; int blocksLeft; }`. As built (stage B), a ramp counts down the blocks it has left instead of keeping a fixed `step`; the reason is under `ProcessCommand` below.
   - Values are Q16 on the field's scale: field `v` is `v << 16`, so 0x00-0xFF becomes 0 to 0xFF0000.
-  - Q16 matters for slow ramps. The slowest ramp, `aa=FF`, is about 1020 ticks, or about 39 000 blocks at 120 BPM and 44.1 kHz. A one-step change spread over that still has a non-zero step.
+  - Q16 matters for slow ramps. The slowest ramp, `aa=FF`, is about 1020 ticks, or about 39 000 blocks at 120 BPM and 44.1 kHz. A one-step change spread over that still moves at least 1 per block.
 - **`ProcessCommand(channel, cc, value)`.** For `I_CMD_TIMB`, `I_CMD_COLR` and `I_CMD_VOLM`:
   - If the value isn't active, set `current` from the screen field and set `active`.
   - Set `target = (value & 0xFF) << 16`.
-  - Compute `step = (target - current) / blocks`, where `blocks = max(1, aa*4*GetTickSampleCount() / BRAIDS_BLOCK_SIZE)`. If the step comes out as 0 while `target != current`, use ±1.
-  - With `aa=00`, `current = target` at once.
+  - Set `blocksLeft = max(1, int(4*GetTickSampleCount())*aa / BRAIDS_BLOCK_SIZE)`.
+  - The spec first had a fixed `step = (target - current) / blocks`, at least ±1. That makes small, slow moves late: a one-step move at `aa=FF` would take about 65 500 blocks instead of 39 000. Counting down lands every ramp on its last block exactly.
+  - With `aa=00`, `current = target` at once and `blocksLeft = 0`.
 - **`Start()`.** On a clean start (`flags & 1`, next to the existing `Strike()` at `:167`), clear `active` on all three values.
-- **Advance once per Braids block, before `renderBlock()`.** Add `step` to `current` and stop at `target`. Then:
+- **Advance once per Braids block, before `renderBlock()`.** While `blocksLeft > 0`, add `(target - current) / blocksLeft` to `current` and count `blocksLeft` down; the last block lands on `target`. Then:
   - timbre and color go to Braids as `current >> 9`. That equals today's `v << 7` for whole values and is finer between them.
   - volume is `current >> 16`, so the multiply in `Render()`'s copy loop stays at today's 8-bit width and no new overflow is possible.
+  - As built, the voice keeps that volume with the block it was rendered for (`fifoVolume`), so a FIFO block is scaled by the volume of its own block. An inactive volume (`fifoVolume` -1) is read from the field on every `Render()` as today.
   - An inactive value reads the screen field exactly as today.
 - **`Commands[]`** (`:215`): `I_CMD_COLR, I_CMD_TIMB, I_CMD_VOLM, I_CMD_NONE`.
 - **Threading.** The same thread context as `SampleInstrument::ProcessCommand`, which also writes per-voice render state. No new locking.
@@ -122,7 +124,18 @@ Stages, each committed when it passes:
   - Done 2026-10-16. X64 build: no warnings in the changed files. slot_lab: `make cmdlists` all match; `make check` same as `baseline/fork` for every fixture (the one "loads back differently" line is the known `hand-midi-notype`); `make compare` differs only in `hand-notype`, as expected; `make play` passes with no sanitizer reports, with the three unknown-slot counts updated.
   - gui_lab, on a copy of `up-basic`, phrase 00 row 00 (I00, Sample): the popup still has 6 rows (29 commands), COLR and TIMB dimmed. Selecting each shows its legend (`COLoR:aabb` / `approach color`, `TIMBre:aabb` / `approach timbre`, then `bb at speed aa`) and the status line `not for I00 SAMPLE`.
   - Not run: a PIGTAIL row (TIMB and COLR stay dimmed there until stage B) and the owner's GUI check.
-- [ ] **B.** PIGTAIL's state, `ProcessCommand`, `Commands[]`, section 7's expectations, pt_lab `make cmds`, and then the owner's listening test.
+  - Owner's GUI check (2026-10-16, this build in `~/lgpt-run`): all good.
+- [x] **B.** PIGTAIL's state, `ProcessCommand`, `Commands[]`, section 7's expectations, pt_lab `make cmds`, and then the owner's listening test (pending).
+  - Committed 2026-10-16. X64 build: no warnings from `PigtailInstrument.cpp`. slot_lab: `make cmdlists` (PIGTAIL: 3 commands, matches its code), `make check` and `make compare` as at stage A, `make play` passes with section 7's counts (phrase 10, table 7) plus a check that TIMB's status on a PIGTAIL row is `I05 PIGTAIL`.
+  - pt_lab `make cmds` (each run in a forked child, so every run starts from fresh voices and the same RNG seed): 108 of 108 checks, plain and under ASan + UBSan.
+    - `aa=00` against the field, sample for sample: TIMB, COLR and VOLM to 37 and FF, at the note's start and midway, on csaw, fold, swarm, vowel, pluck, snare and cloud.
+    - VOLM ramps read back block by block from a run at volume 256: within 1 of the straight line, and exactly `bb` from block `int(4*tick)*aa/24` (153 for `aa=01` at 120 BPM). Tested on 00-FF at `aa` 01, 04 and 10, FF-00 at 02, 30-C0 at 03 at 150 BPM, 40-41 at FF (39 046 blocks), and 00-FF at 04 with a note without instrument number midway.
+    - A note without an instrument number keeps all three values, with or without a stop before it. A clean start drops them and the field is live again. TIMB doesn't freeze the color field; while TIMB holds timbre, the timbre field is ignored. Commands to other channels, and FCUT, PTCH and ARPG, leave the output unchanged.
+    - `nocmd`: with no commands, the output of all 48 shapes (field edits, notes with and without instrument number, a stop) and a 4-channel run is bit-identical to `PigtailInstrument.cpp` at `4dc77d6`, both compiled with the same flags.
+    - TIMB and COLR ramp timing isn't read back from the output. They share VOLM's code (`advanceMod`).
+  - pt_lab `make stress`, `make cpu` and `make ident` (Braids still bit-identical at 96 kHz) unchanged.
+  - gui_lab, on a copy of `up-basic` with slot 03 made PIGTAIL and phrase 00 row 00 set to I03: the popup lights 10 commands (COLR DLAY GROV HOP KILL STOP TABL TIMB TMPO VOLM) and shows `I03 PIGTAIL` and TIMB's legend. With TIMB 0003 on the row, the song played 4 s on the dummy audio driver with no errors.
+  - Not run: the owner's listening test (section 8, item 4), tables of TIMB started with TABL (reading only), and the Brick.
 - **Afterwards.** Update CLAUDE.md: the PIGTAIL "stubs" line, and `flags & 1` described as "instrument number on the row".
 
 ## 9. Later: the envelope

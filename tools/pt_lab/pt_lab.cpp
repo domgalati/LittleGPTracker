@@ -14,9 +14,14 @@
 //   cpu     per model render cost, one voice, 10 s of audio at 44.1 kHz
 //   stress  shape switching on a held note and on 8 channels with random
 //           parameters, notes and block sizes (build with sanitizers)
+//   cmds    TIMB, COLR and VOLM: aa=00 against the screen field, ramp timing,
+//           what a note with and without instrument number keeps
+//   nocmd   a hash per shape with no commands, to compare across builds
 
 #include "Application/Instruments/InstrumentBank.h"
 #include "Application/Instruments/PigtailInstrument.h"
+#include "Application/Instruments/CommandList.h"
+#include "Application/Player/SyncMaster.h"
 #include "Services/Audio/Audio.h"
 #include "Adapters/Unix/FileSystem/UnixFileSystem.h"
 #include "Adapters/LINUX/System/LINUXSystem.h"
@@ -27,6 +32,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 #include <time.h>
 #include <math.h>
 #include <complex>
@@ -564,9 +570,320 @@ static void modeStress() {
   printf("index 999 and -5 rendered without fault\n");
 }
 
+// ------------------------------------------------------------- commands
+// TIMB, COLR and VOLM (docs/design/pigtail-commands.md). Each run is a
+// script played in a forked child, so every run starts from fresh voices and
+// the same RNG state, and two runs can be compared sample for sample.
+
+enum { SC_START, SC_RENDER, SC_CMD, SC_FIELD, SC_STOP, SC_TEMPO };
+struct ScriptStep { int kind, ch, a, b; };
+
+struct Script {
+  int ch, shape, t, c, vol;
+  uint32_t seed;
+  std::vector<ScriptStep> steps;
+  Script(int shape_, int t_, int c_, int vol_, uint32_t seed_ = 1)
+    : ch(0), shape(shape_), t(t_), c(c_), vol(vol_), seed(seed_) {}
+  Script &add(int kind, int ch_, int a, int b) {
+    ScriptStep s = { kind, ch_, a, b };
+    steps.push_back(s);
+    return *this;
+  }
+  Script &start(int note, int flags) { return add(SC_START, ch, note, flags); }
+  Script &render(int frames) { return add(SC_RENDER, ch, frames, 0); }
+  Script &cmd(FourCC cc, int value) { return add(SC_CMD, ch, int(cc), value); }
+  Script &cmdOn(int ch_, FourCC cc, int value) { return add(SC_CMD, ch_, int(cc), value); }
+  Script &field(FourCC id, int value) { return add(SC_FIELD, ch, int(id), value); }
+  Script &stop() { return add(SC_STOP, ch, 0, 0); }
+  Script &tempo(int bpm) { return add(SC_TEMPO, ch, bpm, 0); }
+};
+
+// Left channel of every rendered frame, in int16 units (exact: i2fp is a shift)
+static void playScript(const Script &s, std::vector<int> &out) {
+  static fixed buf[2 * 1024];
+  static const int sizes[] = { 7, 100, 799, 24, 1, 333, 800 };
+  int k = 0;
+  setParams(s.shape, s.t, s.c, s.vol);
+  stmlib::Random::Seed(s.seed);
+  for (size_t i = 0; i < s.steps.size(); i++) {
+    const ScriptStep &st = s.steps[i];
+    switch (st.kind) {
+      case SC_START: gPig->Start(st.ch, st.a, st.b); break;
+      case SC_STOP: gPig->Stop(st.ch); break;
+      case SC_CMD: gPig->ProcessCommand(st.ch, FourCC(st.a), ushort(st.b)); break;
+      case SC_FIELD: gPig->FindVariable(FourCC(st.a))->SetInt(st.b); break;
+      case SC_TEMPO: SyncMaster::GetInstance()->SetTempo(st.a); break;
+      case SC_RENDER:
+        for (int left = st.a; left > 0;) {
+          int b = std::min(left, sizes[k++ % 7]);
+          gPig->Render(st.ch, buf, b, 0);
+          for (int j = 0; j < b; j++) out.push_back(buf[2 * j] >> FIXED_SHIFT);
+          left -= b;
+        }
+        break;
+    }
+  }
+}
+
+static std::vector<int> run(const Script &s) {
+  int fd[2];
+  if (pipe(fd) != 0) { perror("pipe"); exit(1); }
+  fflush(stdout);
+  pid_t pid = fork();
+  if (pid == 0) {
+    close(fd[0]);
+    std::vector<int> out;
+    playScript(s, out);
+    const char *p = (const char *)&out[0];
+    size_t left = out.size() * sizeof(int);
+    while (left > 0) {
+      ssize_t w = write(fd[1], p, left);
+      if (w <= 0) _exit(1);
+      p += w;
+      left -= w;
+    }
+    _exit(0);
+  }
+  close(fd[1]);
+  std::vector<int> out;
+  int chunk[4096];
+  std::string rest;
+  for (;;) {
+    ssize_t r = read(fd[0], chunk, sizeof(chunk));
+    if (r <= 0) break;
+    rest.append((const char *)chunk, r);
+  }
+  close(fd[0]);
+  int status = 0;
+  waitpid(pid, &status, 0);
+  if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+    printf("FAIL: script child died (status %d)\n", status);
+    exit(1);
+  }
+  out.resize(rest.size() / sizeof(int));
+  if (!out.empty()) memcpy(&out[0], rest.data(), out.size() * sizeof(int));
+  return out;
+}
+
+static int gFails = 0, gChecks = 0;
+static void check(bool ok, const char *what) {
+  gChecks++;
+  if (!ok) gFails++;
+  printf("  %s: %s\n", ok ? "ok" : "FAIL", what);
+}
+
+// Same output, and not silence (a silent pair would prove nothing)
+static void expectSame(const Script &a, const Script &b, const char *what) {
+  std::vector<int> x = run(a), y = run(b);
+  size_t diff = x.size() == y.size() ? x.size() : 0;
+  for (size_t i = 0; i < x.size() && i < y.size(); i++)
+    if (x[i] != y[i]) { diff = i; break; }
+  bool same = x.size() == y.size() && diff == x.size();
+  int peak = 0;
+  for (size_t i = 0; i < x.size(); i++) peak = std::max(peak, abs(x[i]));
+  char line[300];
+  if (same) snprintf(line, sizeof(line), "%s (%d frames, peak %d)", what, int(x.size()), peak);
+  else snprintf(line, sizeof(line), "%s: first difference at frame %d of %d", what, int(diff), int(x.size()));
+  check(same && (peak > 0 || strstr(what, "silent")), line);
+}
+
+// The volume each 24-frame Braids block was scaled by, from a run at volume
+// 256 (the raw block: (src*256)>>8 == src): -1 where the block can't tell
+static std::vector<int> blockVolumes(const std::vector<int> &raw, const std::vector<int> &got) {
+  std::vector<int> vols;
+  for (size_t b = 0; (b + 1) * 24 <= got.size(); b++) {
+    int found = -1, matches = 0;
+    for (int v = 0; v < 256; v++) {
+      bool ok = true;
+      for (int i = 0; i < 24 && ok; i++) ok = ((raw[b * 24 + i] * v) >> 8) == got[b * 24 + i];
+      if (ok) { found = v; matches++; }
+    }
+    vols.push_back(matches == 1 ? found : -1);
+  }
+  return vols;
+}
+
+static int tickBlocks(int aa) {
+  return std::max(1, int(4 * SyncMaster::GetInstance()->GetTickSampleCount()) * aa / 24);
+}
+
+// A VOLM aabb ramp from `from`, with an optional note without instrument
+// number at frame `restrikeAt` (0: none). Block k (1-based) must carry the
+// straight line from `from` to bb (within 1), and exactly bb from block
+// aa*4 ticks/24 on
+static void checkRamp(int from, int aa, int bb, int bpm, int restrikeAt) {
+  SyncMaster::GetInstance()->SetTempo(bpm);
+  int blocks = tickBlocks(aa);
+  int frames = (blocks + 40) * 24;
+  Script raw(0, 0x80, 0x80, 256), ramp(0, 0x80, 0x80, from);
+  raw.tempo(bpm).start(48, 1);
+  ramp.tempo(bpm).start(48, 1).cmd(I_CMD_VOLM, (aa << 8) | bb);
+  if (restrikeAt) {
+    raw.render(restrikeAt).start(55, 0).render(frames - restrikeAt);
+    ramp.render(restrikeAt).start(55, 0).render(frames - restrikeAt);
+  } else {
+    raw.render(frames);
+    ramp.render(frames);
+  }
+  std::vector<int> vols = blockVolumes(run(raw), run(ramp));
+  int unknown = 0, worst = 0, reached = -1;
+  for (int k = 1; k <= (int)vols.size(); k++) {
+    int v = vols[k - 1];
+    if (v < 0) { unknown++; continue; }
+    int want = k >= blocks ? bb : from + (bb - from) * k / blocks;
+    worst = std::max(worst, abs(v - want));
+    if (reached < 0 && v == bb) reached = k;
+  }
+  // Rising, the block before the last still reads below bb; falling, it may
+  // already round down to it
+  bool atEnd = vols[blocks - 1] == bb && (bb < from || blocks < 2 || vols[blocks - 2] != bb);
+  char line[300];
+  snprintf(line, sizeof(line),
+           "VOLM %02X%02X from %02X at %d BPM%s: %d blocks expected, first at %02X: block %d, "
+           "worst off-line %d, %d of %d blocks unreadable",
+           aa, bb, from, bpm, restrikeAt ? ", note without instrument number midway" : "",
+           blocks, bb, reached, worst, unknown, int(vols.size()));
+  check(worst <= 1 && atEnd && unknown < int(vols.size()) / 20, line);
+  SyncMaster::GetInstance()->SetTempo(120);
+}
+
+static void modeCmds() {
+  gRate = 44100;
+  SyncMaster::GetInstance()->SetTempo(120);
+  char what[200];
+  static const int shapes[] = { 0, 3, 14, 22, 28, 36, 44 };  // csaw fold swarm vowel pluck snare cloud
+  static const FourCC cmds[] = { I_CMD_TIMB, I_CMD_COLR, I_CMD_VOLM };
+  static const FourCC fields[] = { PTIP_TIMBRE, PTIP_COLOR, PTIP_VOLUME };
+  static const char *names[] = { "TIMB", "COLR", "VOLM" };
+
+  printf("aa=00 sounds like the screen field\n");
+  for (size_t si = 0; si < sizeof(shapes) / sizeof(shapes[0]); si++)
+    for (int p = 0; p < 3; p++)
+      for (int seed = 1; seed <= 2; seed++) {
+        int xx = seed == 1 ? 0x37 : 0xFF, other = 0xA0;
+        int s = shapes[si];
+        // From the note's start
+        Script ref(s, 0x80, 0x80, 0x80, seed), cmd(s, 0x80, 0x80, 0x80, seed);
+        ref.field(fields[p], xx).start(48, 1).render(9000);
+        cmd.field(fields[p], other).start(48, 1).cmd(cmds[p], xx).render(9000);
+        snprintf(what, sizeof(what), "%-6s %s 00%02X at the note's start, seed %d", kNames[s], names[p], xx, seed);
+        expectSame(ref, cmd, what);
+        // Midway, on a block boundary (2400 = 100 blocks)
+        Script ref2(s, 0x80, 0x80, 0x80, seed), cmd2(s, 0x80, 0x80, 0x80, seed);
+        ref2.field(fields[p], other).start(48, 1).render(2400).field(fields[p], xx).render(6000);
+        cmd2.field(fields[p], other).start(48, 1).render(2400).cmd(cmds[p], xx).render(6000);
+        snprintf(what, sizeof(what), "%-6s %s 00%02X midway, seed %d", kNames[s], names[p], xx, seed);
+        expectSame(ref2, cmd2, what);
+      }
+  {
+    Script cmd(0, 0x80, 0x80, 0x00);
+    cmd.start(48, 1).cmd(I_CMD_VOLM, 0x0000).render(4800);
+    Script silent(0, 0x80, 0x80, 0x00);
+    silent.start(48, 1).render(4800);
+    expectSame(silent, cmd, "VOLM 0000 from 00: silent");
+  }
+
+  printf("ramps land on time (VOLM, read back block by block)\n");
+  checkRamp(0x00, 0x01, 0xFF, 120, 0);
+  checkRamp(0x00, 0x04, 0xFF, 120, 0);
+  checkRamp(0x00, 0x10, 0xFF, 120, 0);
+  checkRamp(0xFF, 0x02, 0x00, 120, 0);
+  checkRamp(0x30, 0x03, 0xC0, 150, 0);
+  checkRamp(0x40, 0xFF, 0x41, 120, 0);  // the slowest, smallest move
+  checkRamp(0x00, 0x04, 0xFF, 120, 4800);
+
+  printf("notes without an instrument number keep the values; a clean start drops them\n");
+  for (int p = 0; p < 3; p++) {
+    Script ref(0, 0x80, 0x80, 0x80), cmd(0, 0x80, 0x80, 0x80);
+    ref.field(fields[p], 0xE0).start(48, 1).render(2400).start(55, 0).render(4800);
+    cmd.field(fields[p], 0x20).start(48, 1).cmd(cmds[p], 0xE0).render(2400).start(55, 0).render(4800);
+    snprintf(what, sizeof(what), "%s 00E0, then a note without instrument number: kept", names[p]);
+    expectSame(ref, cmd, what);
+    Script ref2(0, 0x80, 0x80, 0x80), cmd2(0, 0x80, 0x80, 0x80);
+    ref2.field(fields[p], 0xE0).start(48, 1).render(2400).stop().start(55, 0).render(4800);
+    cmd2.field(fields[p], 0x20).start(48, 1).cmd(cmds[p], 0xE0).render(2400).stop().start(55, 0).render(4800);
+    snprintf(what, sizeof(what), "%s 00E0, stop, then a note without instrument number: kept", names[p]);
+    expectSame(ref2, cmd2, what);
+    Script ref3(0, 0x80, 0x80, 0x80), cmd3(0, 0x80, 0x80, 0x80);
+    ref3.field(fields[p], 0xE0).start(48, 1).render(2400).field(fields[p], 0x20).start(55, 1).render(4800);
+    cmd3.field(fields[p], 0x20).start(48, 1).cmd(cmds[p], 0xE0).render(2400).start(55, 1).render(4800);
+    snprintf(what, sizeof(what), "%s 00E0, then a clean start: back to the field", names[p]);
+    expectSame(ref3, cmd3, what);
+    // After the reset, the field is live again
+    Script ref4(0, 0x80, 0x80, 0x80), cmd4(0, 0x80, 0x80, 0x80);
+    ref4.field(fields[p], 0xE0).start(48, 1).render(2400).field(fields[p], 0x20).start(55, 1).render(2400)
+        .field(fields[p], 0x90).render(2400);
+    cmd4.field(fields[p], 0x20).start(48, 1).cmd(cmds[p], 0xE0).render(2400).start(55, 1).render(2400)
+        .field(fields[p], 0x90).render(2400);
+    snprintf(what, sizeof(what), "%s: after the clean start, screen edits are heard again", names[p]);
+    expectSame(ref4, cmd4, what);
+  }
+  {
+    // One command doesn't freeze the other fields
+    Script ref(0, 0x80, 0x80, 0x80), cmd(0, 0x80, 0x80, 0x80);
+    ref.field(PTIP_TIMBRE, 0x10).start(48, 1).render(2400).field(PTIP_COLOR, 0xF0).render(2400);
+    cmd.start(48, 1).cmd(I_CMD_TIMB, 0x10).render(2400).field(PTIP_COLOR, 0xF0).render(2400);
+    expectSame(ref, cmd, "after TIMB, the color field is still live");
+    // While a command holds timbre, its field is ignored
+    Script ref2(0, 0x80, 0x80, 0x80), cmd2(0, 0x80, 0x80, 0x80);
+    ref2.field(PTIP_TIMBRE, 0x10).start(48, 1).render(4800);
+    cmd2.start(48, 1).cmd(I_CMD_TIMB, 0x10).render(2400).field(PTIP_TIMBRE, 0xF0).render(2400);
+    expectSame(ref2, cmd2, "after TIMB, timbre field edits are ignored");
+  }
+
+  printf("other channels and other commands\n");
+  {
+    Script ref(0, 0x80, 0x80, 0x80), cmd(0, 0x80, 0x80, 0x80);
+    ref.start(48, 1).render(4800);
+    cmd.start(48, 1).cmdOn(1, I_CMD_TIMB, 0x00E0).cmdOn(3, I_CMD_VOLM, 0x1000).render(4800);
+    expectSame(ref, cmd, "commands to channels 1 and 3 leave channel 0 alone");
+    Script cmd2(0, 0x80, 0x80, 0x80);
+    cmd2.start(48, 1).cmd(I_CMD_FCUT, 0x0010).cmd(I_CMD_PTCH, 0x0105).cmd(I_CMD_ARPG, 0x0370).render(4800);
+    expectSame(ref, cmd2, "FCUT, PTCH and ARPG do nothing");
+  }
+
+  printf("cmds: %d of %d checks passed\n", gChecks - gFails, gChecks);
+  if (gFails) {
+    fflush(stdout);
+    _exit(1);
+  }
+}
+
+// No commands: a hash per scenario, to compare with the build before them
+static uint32_t fnv(const std::vector<int> &x) {
+  uint32_t h = 2166136261u;
+  for (size_t i = 0; i < x.size(); i++) { h ^= uint32_t(x[i]); h *= 16777619u; }
+  return h;
+}
+
+static void modeNoCmd() {
+  gRate = 44100;
+  SyncMaster::GetInstance()->SetTempo(120);
+  for (int s = 0; s < kNumShapes; s++) {
+    Script sc(s, 0x80, 0x80, 0x40, 1000 + s);
+    sc.start(36 + s, 1).render(6000).field(PTIP_TIMBRE, 0x20).render(3001)
+      .field(PTIP_COLOR, 0xE0).field(PTIP_VOLUME, 0xFF).render(4000).start(60, 0).render(5000)
+      .field(PTIP_VOLUME, 0x10).render(777).start(43, 1).render(8000).stop().start(50, 0).render(3000);
+    std::vector<int> out = run(sc);
+    printf("%-9s %08x %d\n", kNames[s], fnv(out), int(out.size()));
+  }
+  // Several channels, interleaved
+  Script multi(0, 0x60, 0xA0, 0x80, 77);
+  for (int ch = 0; ch < 4; ch++) multi.add(SC_START, ch, 40 + 7 * ch, 1);
+  for (int r = 0; r < 20; r++)
+    for (int ch = 0; ch < 4; ch++) {
+      multi.ch = ch;
+      if (r == 7) multi.field(PTIP_SHAPE, 22);
+      multi.render(311 + 50 * ch);
+      if (r % 5 == 4) multi.start(45 + r, r & 1);
+    }
+  std::vector<int> out = run(multi);
+  printf("4 channels %08x %d\n", fnv(out), int(out.size()));
+}
+
 int main(int argc, char **argv) {
   if (argc < 2) {
-    fprintf(stderr, "usage: pt_lab audit|tune [raw]|init|cpu|stress\n");
+    fprintf(stderr, "usage: pt_lab audit|tune [raw]|init|cpu|stress|cmds|nocmd\n");
     return 2;
   }
   System::Install(new LINUXSystem());
@@ -586,6 +903,8 @@ int main(int argc, char **argv) {
   else if (mode == "init") modeInit();
   else if (mode == "cpu") modeCpu();
   else if (mode == "stress") modeStress();
+  else if (mode == "cmds") modeCmds();
+  else if (mode == "nocmd") modeNoCmd();
   else { fprintf(stderr, "unknown mode %s\n", argv[1]); return 2; }
   printf("(%s took %.1f s CPU)\n", mode.c_str(), double(clock() - t0) / CLOCKS_PER_SEC);
   fflush(stdout);

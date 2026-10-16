@@ -8,6 +8,8 @@
 #   make cpu      per model CPU cost (from the -g X64 objects)
 #   make stress   shape switching under ASan + UBSan
 #   make ident    bit-identity vs pristine upstream (f43d554) at 96 kHz
+#   make cmds     TIMB/COLR/VOLM checks, plain and under ASan + UBSan, and
+#                 no-command output vs PIGTAIL before them (CMDS_BASE)
 #   make all-tests
 #
 # BRAIDS_WRAPV: the X64 build compiles Braids with -fwrapv, so the sanitizer
@@ -18,6 +20,9 @@ ROOT     := $(abspath ../..)
 OBJDIR   := $(ROOT)/projects/buildX64
 BUILD    := build
 PRISTINE := f43d554
+# PigtailInstrument.cpp before TIMB, COLR and VOLM (stage A of
+# docs/design/pigtail-commands.md)
+CMDS_BASE := 4dc77d6
 
 CXX      ?= g++
 DEFINES  := -DPLATFORM_X64 -D_64BIT -DCPP_MEMORY -D__LINUX_ALSA__ -D__LINUX_ALSASEQ__ \
@@ -39,7 +44,7 @@ APP_OBJS  = $(filter-out $(OBJDIR)/LINUXMain.o,$(wildcard $(OBJDIR)/*.o))
 SAN_SKIP  = LINUXMain.o PigtailInstrument.o $(notdir $(BRAIDS_SRC:.cpp=.o))
 SAN_OBJS  = $(filter-out $(addprefix $(OBJDIR)/,$(SAN_SKIP)),$(wildcard $(OBJDIR)/*.o))
 
-.PHONY: lab asan ident audit tune init cpu stress all-tests check-objs clean
+.PHONY: lab asan ident audit tune init cpu stress cmds all-tests check-objs clean
 
 lab: $(BUILD)/pt_lab
 
@@ -92,7 +97,33 @@ cpu: lab
 stress: asan
 	UBSAN_OPTIONS=print_stacktrace=0 timeout 900 $(BUILD)/pt_lab_asan stress 2>&1 | grep -v '^\['
 
-all-tests: ident init audit stress cpu tune
+# The same pt_lab linked with PIGTAIL as it was at CMDS_BASE and as it is
+# now, both compiled here with the same flags; with no commands in play their
+# output must match bit for bit
+CMDS_FLAGS := -g -O0 -w $(STD) $(DEFINES) $(INCLUDES) -I$(ROOT)/sources/Application/Instruments
+NOPIG_OBJS  = $(filter-out $(OBJDIR)/LINUXMain.o $(OBJDIR)/PigtailInstrument.o,$(wildcard $(OBJDIR)/*.o))
+
+$(BUILD)/pt_lab_before $(BUILD)/pt_lab_now: pt_lab.cpp check-objs $(PIGTAIL_SRC)
+	@mkdir -p $(BUILD)/before $(BUILD)/now
+	git -C $(ROOT) show $(CMDS_BASE):sources/Application/Instruments/PigtailInstrument.cpp > $(BUILD)/before/PigtailInstrument.cpp
+	cp $(PIGTAIL_SRC) $(BUILD)/now/PigtailInstrument.cpp
+	$(CXX) -O2 -w $(STD) $(DEFINES) $(INCLUDES) -c pt_lab.cpp -o $(BUILD)/pt_lab.o
+	@for v in before now; do \
+	  $(CXX) $(CMDS_FLAGS) -c $(BUILD)/$$v/PigtailInstrument.cpp -o $(BUILD)/$$v/PigtailInstrument.o || exit 1; \
+	  $(CXX) -o $(BUILD)/pt_lab_$$v $(BUILD)/pt_lab.o $(BUILD)/$$v/PigtailInstrument.o $(NOPIG_OBJS) $(LIBS) || exit 1; done
+
+cmds: lab asan $(BUILD)/pt_lab_before $(BUILD)/pt_lab_now
+	$(BUILD)/pt_lab cmds 2>/dev/null > $(BUILD)/cmds.txt; s=$$?; grep -v '^\[' $(BUILD)/cmds.txt; test $$s -eq 0
+	UBSAN_OPTIONS=print_stacktrace=1:halt_on_error=1 $(BUILD)/pt_lab_asan cmds > $(BUILD)/cmds_asan.txt 2>&1; s=$$?; \
+	  grep -v '^\[' $(BUILD)/cmds_asan.txt | tail -2 | head -1; \
+	  test $$s -eq 0 || { grep -v '^\[' $(BUILD)/cmds_asan.txt | grep -v '^  ok' | tail -30; echo "cmds: FAILED under ASan + UBSan"; exit 1; }
+	$(BUILD)/pt_lab_before nocmd 2>/dev/null | grep -v '^[[(]' > $(BUILD)/nocmd_before.txt
+	$(BUILD)/pt_lab_now nocmd 2>/dev/null | grep -v '^[[(]' > $(BUILD)/nocmd_now.txt
+	@if cmp -s $(BUILD)/nocmd_before.txt $(BUILD)/nocmd_now.txt; then \
+	  echo "nocmd: no-command output IDENTICAL to $(CMDS_BASE) in all $$(wc -l < $(BUILD)/nocmd_now.txt) scenarios"; \
+	else echo "nocmd: DIFFERS from $(CMDS_BASE):"; diff $(BUILD)/nocmd_before.txt $(BUILD)/nocmd_now.txt; exit 1; fi
+
+all-tests: ident init audit stress cpu tune cmds
 
 clean:
 	rm -rf $(BUILD)

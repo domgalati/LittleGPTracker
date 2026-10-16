@@ -1514,12 +1514,12 @@ static void modeResolve(Project *p, ViewData *vd) {
   b->Create(0x05, IT_PIGTAIL);
   expectCells(b, CommandContext(CL_PHRASE, 0x00), "phrase, Sample 00", 22);
   expectCells(b, CommandContext(CL_PHRASE, 0x80), "phrase, MIDI 80", 13);
-  expectCells(b, CommandContext(CL_PHRASE, 0x05), "phrase, PIGTAIL 05", 7);
+  expectCells(b, CommandContext(CL_PHRASE, 0x05), "phrase, PIGTAIL 05", 10);
   expectCells(b, CommandContext(CL_PHRASE, 0x03), "phrase, empty 03", 7);
   expectCells(b, CommandContext(CL_PHRASE), "phrase, unknown", 28);
   expectCells(b, CommandContext(CL_TABLE, 0x00), "table, Sample 00", 19);
   expectCells(b, CommandContext(CL_TABLE, 0x80), "table, MIDI 80", 10);
-  expectCells(b, CommandContext(CL_TABLE, 0x05), "table, PIGTAIL 05", 4);
+  expectCells(b, CommandContext(CL_TABLE, 0x05), "table, PIGTAIL 05", 7);
   expectCells(b, CommandContext(CL_TABLE, 0x03), "table, empty 03", 4);
   expectCells(b, CommandContext(CL_TABLE), "table, unknown", 25);
   expectCells(b, CommandContext(CL_PHRASE, 0xFF), "phrase, slot FF: as unknown", 28);
@@ -1530,7 +1530,8 @@ static void modeResolve(Project *p, ViewData *vd) {
   expectStatus(b, CommandContext(CL_TABLE, 0x00), I_CMD_TMPO, "phrases only");
   expectStatus(b, CommandContext(CL_PHRASE, 0x80), I_CMD_MDCC, "I80 MIDI");
   expectStatus(b, CommandContext(CL_PHRASE, 0x80), I_CMD_FCUT, "not for I80 MIDI");
-  expectStatus(b, CommandContext(CL_PHRASE, 0x05), I_CMD_VOLM, "not for I05 PIGTAIL");
+  expectStatus(b, CommandContext(CL_PHRASE, 0x05), I_CMD_FCUT, "not for I05 PIGTAIL");
+  expectStatus(b, CommandContext(CL_PHRASE, 0x05), I_CMD_TIMB, "I05 PIGTAIL");
   expectStatus(b, CommandContext(CL_TABLE, 0x7F), I_CMD_CRSH, "I7F SAMPLE");
   expectStatus(b, CommandContext(CL_PHRASE, 0x03), I_CMD_KILL, "I03 empty");
   expectStatus(b, CommandContext(CL_PHRASE, 0x03), I_CMD_VOLM, "I03 is empty");
