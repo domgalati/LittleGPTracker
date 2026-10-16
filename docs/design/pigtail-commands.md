@@ -1,6 +1,6 @@
 # PIGTAIL phrase commands: TIMB, COLR, VOLM
 
-Status: approved by the owner 2026-10-16; stages A and B (section 8) not started. Tick each stage here when it's committed. Written 2026-10-16 against master `bd30d84`; every `file:line` below refers to that commit. Nothing here is built or run yet: every claim about today's behaviour comes from reading the code. Read CLAUDE.md first.
+Status: approved by the owner 2026-10-16. Stage A (section 8) done and committed on `feat/pigtail-commands`; stage B not started. Tick each stage here when it's committed. Written 2026-10-16 against master `bd30d84`; every `file:line` below refers to that commit. Apart from what stage A records, nothing here is built or run yet: every other claim about today's behaviour comes from reading the code. Read CLAUDE.md first.
 
 ## 1. Goal
 
@@ -99,6 +99,7 @@ Consequences:
   - `:1522`: 4 lit becomes 7 for a PIGTAIL table.
   - `:1533`: expects VOLM to be "not for I05 PIGTAIL"; switch it to a command PIGTAIL still lacks, e.g. FCUT.
   - The Sample and MIDI lit counts are unchanged: TIMB and COLR are dimmed for them, so only the total goes up.
+  - The unknown-slot counts each go up by 2 (stage A): with no slot known, every command not tied to the other location stays lit, TIMB and COLR included. `:1519` and `:1525` become 28 for phrases, `:1524` 25 for tables.
 - `tools/slot_lab` `make cmdlists`: PIGTAIL's list must match its new `case` labels. Its entry is already in `CHECKS`.
 
 ## 8. Verification
@@ -117,8 +118,11 @@ Consequences:
    - a table of TIMB steps started with TABL.
 
 Stages, each committed when it passes:
-- **A.** The FourCCs, `_all[]` and the legends. The popup shows TIMB and COLR, dimmed everywhere. slot_lab passes with only its total changed.
-- **B.** PIGTAIL's state, `ProcessCommand`, `Commands[]`, section 7's expectations, pt_lab `make cmds`, and then the owner's listening test.
+- [x] **A.** The FourCCs, `_all[]` and the legends. The popup shows TIMB and COLR, dimmed everywhere except where the slot is unknown. slot_lab passes with its total and its unknown-slot counts changed (section 7).
+  - Done 2026-10-16. X64 build: no warnings in the changed files. slot_lab: `make cmdlists` all match; `make check` same as `baseline/fork` for every fixture (the one "loads back differently" line is the known `hand-midi-notype`); `make compare` differs only in `hand-notype`, as expected; `make play` passes with no sanitizer reports, with the three unknown-slot counts updated.
+  - gui_lab, on a copy of `up-basic`, phrase 00 row 00 (I00, Sample): the popup still has 6 rows (29 commands), COLR and TIMB dimmed. Selecting each shows its legend (`COLoR:aabb` / `approach color`, `TIMBre:aabb` / `approach timbre`, then `bb at speed aa`) and the status line `not for I00 SAMPLE`.
+  - Not run: a PIGTAIL row (TIMB and COLR stay dimmed there until stage B) and the owner's GUI check.
+- [ ] **B.** PIGTAIL's state, `ProcessCommand`, `Commands[]`, section 7's expectations, pt_lab `make cmds`, and then the owner's listening test.
 - **Afterwards.** Update CLAUDE.md: the PIGTAIL "stubs" line, and `flags & 1` described as "instrument number on the row".
 
 ## 9. Later: the envelope

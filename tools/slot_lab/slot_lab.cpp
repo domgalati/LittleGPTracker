@@ -1516,13 +1516,13 @@ static void modeResolve(Project *p, ViewData *vd) {
   expectCells(b, CommandContext(CL_PHRASE, 0x80), "phrase, MIDI 80", 13);
   expectCells(b, CommandContext(CL_PHRASE, 0x05), "phrase, PIGTAIL 05", 7);
   expectCells(b, CommandContext(CL_PHRASE, 0x03), "phrase, empty 03", 7);
-  expectCells(b, CommandContext(CL_PHRASE), "phrase, unknown", 26);
+  expectCells(b, CommandContext(CL_PHRASE), "phrase, unknown", 28);
   expectCells(b, CommandContext(CL_TABLE, 0x00), "table, Sample 00", 19);
   expectCells(b, CommandContext(CL_TABLE, 0x80), "table, MIDI 80", 10);
   expectCells(b, CommandContext(CL_TABLE, 0x05), "table, PIGTAIL 05", 4);
   expectCells(b, CommandContext(CL_TABLE, 0x03), "table, empty 03", 4);
-  expectCells(b, CommandContext(CL_TABLE), "table, unknown", 23);
-  expectCells(b, CommandContext(CL_PHRASE, 0xFF), "phrase, slot FF: as unknown", 26);
+  expectCells(b, CommandContext(CL_TABLE), "table, unknown", 25);
+  expectCells(b, CommandContext(CL_PHRASE, 0xFF), "phrase, slot FF: as unknown", 28);
 
   printf("status lines and help\n");
   expectStatus(b, CommandContext(CL_PHRASE), I_CMD_ARPG, "instrument unknown");

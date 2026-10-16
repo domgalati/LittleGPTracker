@@ -99,6 +99,14 @@ static inline std::string* getHelpLegend(FourCC command) {
 			result[0].assign("FilterRESonance:aabb");
 			result[1].assign("set resonance to");
 			break;
+		case I_CMD_TIMB:
+			result[0].assign("TIMBre:aabb");
+			result[1].assign("approach timbre");
+			break;
+		case I_CMD_COLR:
+			result[0].assign("COLoR:aabb");
+			result[1].assign("approach color");
+			break;
 		case I_CMD_PAN_:
 			result[0].assign("PAN:aabb");
 			result[1].assign("pan to value");
