@@ -106,6 +106,24 @@ SDLGUIWindowImp::SDLGUIWindowImp(GUICreateWindowParams &p)
   screenRect_._bottomRight._x=windowed_?appWidth*mult_:screenWidth;
   screenRect_._bottomRight._y=windowed_?appHeight*mult_:screenHeight;
 
+  // SCREENWIDTH / SCREENHEIGHT override the window size; the picture is
+  // centered in it and the margins are painted black (see Clear)
+  blackBorders_=false;
+  const char *screenW=Config::GetInstance()->GetValue("SCREENWIDTH") ;
+  if (screenW)
+  {
+    int w=atoi(screenW);
+    screenRect_._bottomRight._x=(w>appWidth*mult_)?w:appWidth*mult_;
+    blackBorders_=true;
+  }
+  const char *screenH=Config::GetInstance()->GetValue("SCREENHEIGHT") ;
+  if (screenH)
+  {
+    int h=atoi(screenH);
+    screenRect_._bottomRight._y=(h>appHeight*mult_)?h:appHeight*mult_;
+    blackBorders_=true;
+  }
+
   Trace::Log("DISPLAY","Creating SDL Window (%d,%d)",screenRect_.Width(), screenRect_.Height());
     window_ = SDL_CreateWindow("LittleGPTracker",SDL_WINDOWPOS_UNDEFINED,SDL_WINDOWPOS_UNDEFINED,
                                screenRect_.Width(),screenRect_.Height(),fullscreen?SDL_WINDOW_FULLSCREEN:SDL_WINDOW_SHOWN);
@@ -423,7 +441,20 @@ void SDLGUIWindowImp::Clear(GUIColor &c,bool overlay)
   rect.h = screenRect_.Height();
  
     backgroundColor_=SDL_MapRGB(surface_->format,c._r&0xFF,c._g&0xFF,c._b&0xFF);
-  SDL_FillRect(surface_, &rect,backgroundColor_) ;
+  if (blackBorders_)
+  {
+    SDL_FillRect(surface_, &rect,SDL_MapRGB(surface_->format,0,0,0)) ;
+    SDL_Rect appRect;
+    appRect.x = appAnchorX_;
+    appRect.y = appAnchorY_;
+    appRect.w = appWidth*mult_;
+    appRect.h = appHeight*mult_;
+    SDL_FillRect(surface_, &appRect,backgroundColor_) ;
+  }
+  else
+  {
+    SDL_FillRect(surface_, &rect,backgroundColor_) ;
+  }
 
 	if (!framebuffer_)
   {		

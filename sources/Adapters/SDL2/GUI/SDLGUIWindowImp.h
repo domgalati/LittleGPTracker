@@ -60,6 +60,7 @@ private:
 	bool cacheFonts_ ;
 	bool framebuffer_ ;
   bool windowed_;
+  bool blackBorders_;
 	SDL_Rect updateRects_[MAX_OVERLAYS] ;
 	int updateCount_ ;
 	int appAnchorX_ ;
