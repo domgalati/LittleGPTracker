@@ -95,6 +95,12 @@ To have the screen bigger than the original GP2X resolution, use **SCREEMULT** t
 
 Be careful as large values take a lot of juice and interfere with sound playback.
 
+On SDL2 builds, **SCREENWIDTH** and **SCREENHEIGHT** set the window size in pixels. The picture (320x240 times SCREENMULT) is centered in it and the margins are black. A value smaller than the picture is ignored. For example, on a 1024x768 TrimUI Brick at SCREENMULT 3:
+
+```xml
+<SCREENWIDTH value='1024' />
+```
+
 ### Auto-Load Last Project
 
 By default, LittleGPTracker will automatically load the last project that was open on the previous session. To disable this behavior and show the project selection dialog instead, set:
